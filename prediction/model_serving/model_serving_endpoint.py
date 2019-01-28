@@ -13,6 +13,7 @@ from flask_cors import CORS
 from gevent.pywsgi import WSGIServer
 
 import jwt
+import re
 from datetime import datetime, timedelta
 
 """
@@ -47,17 +48,58 @@ class Cassandra:
             Prepare statements for database select queries
         """
         self.prep_stmts = {
-            'predictions': {}
+            'csvs': {},
+            'predictions': {},
+            'statistics': {}
         }
 
-        template_for_single_row = 'SELECT * FROM usi_csv_predictions WHERE keyword = ? LIMIT 1'
+        # Find last 100 csv files
+        self.prep_stmts['csvs']['multiple'] = self.session.prepare(
+            'SELECT day_of_data_capture FROM usi_csv_files WHERE always_zero = 0 LIMIT 100')
 
+        # Find a prediction by keyword
         self.prep_stmts['predictions']['single'] = self.session.prepare(
-            template_for_single_row)
+            'SELECT * FROM usi_csv_predictions WHERE keyword = ? LIMIT 1')
+
+        # Find predictions by csv file (date)
+        self.prep_stmts['predictions']['multiple_by_csv'] = self.session.prepare(
+            'SELECT keyword, informational, navigational, transactional FROM usi_csv_predictions_by_csv WHERE csv_file_date = ? LIMIT 100')
+
+        # Find predictions statistics (counters)
+        self.prep_stmts['statistics']['count'] = self.session.prepare(
+            'SELECT informational, navigational, transactional FROM usi_csv_predictions_statistics WHERE always_zero = 0')
+
+    def retrieve_csvs(self):
+        return self.session.execute(self.prep_stmts['csvs']['multiple'], timeout=self.CASS_REQ_TIMEOUT)._current_rows
 
     def retrieve_prediction(self, keyword):
         bind_list = [keyword]
         return self.session.execute(self.prep_stmts['predictions']['single'], bind_list, timeout=self.CASS_REQ_TIMEOUT)._current_rows
+
+    def retrieve_predictions_by_csv(self, csv_file_date, paging_state=None):
+        # Documentation: https://datastax.github.io/python-driver/query_paging.html#resume-paged-results
+
+        bind_list = [csv_file_date]
+        if paging_state is not None:
+            try:
+                previous_paging_state = bytes.fromhex(paging_state)
+                results = self.session.execute(
+                    self.prep_stmts['predictions']['multiple_by_csv'], bind_list, paging_state=previous_paging_state, timeout=self.CASS_REQ_TIMEOUT)
+            except (ValueError, ProtocolException):
+                return {'status': 0, 'error': 'Invalid pagination request.'}
+
+        else:
+            results = self.session.execute(
+                self.prep_stmts['predictions']['multiple_by_csv'], bind_list, timeout=self.CASS_REQ_TIMEOUT)
+
+        return {
+            'predictions': results._current_rows,
+            'next_paging_state': results.paging_state.hex(
+            ) if results.has_more_pages == True else 0
+        }
+
+    def retrieve_statistics(self):
+        return self.session.execute(self.prep_stmts['statistics']['count'], timeout=self.CASS_REQ_TIMEOUT)._current_rows
 
 
 """
@@ -91,8 +133,30 @@ CORS(app)
 def main():
     return "MorphL Predictions API - User Search Intent"
 
+# Find csv files
 
-@app.route('/search-intent/getprediction/<keyword>', methods=['GET'])
+
+@app.route('/search-intent/csvs', methods=['GET'])
+def get_csvs():
+    # Validate authorization header with JWT
+    if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
+        return jsonify(status=0, error='Unauthorized request.'), 401
+
+    csvs = app.config['CASSANDRA'].retrieve_csvs()
+
+    results = []
+    for csv in csvs:
+        results.append(csv['day_of_data_capture'].date().strftime('%Y-%m-%d'))
+
+    return jsonify(
+        status=1,
+        csvs=results
+    )
+
+# Find a single prediction by keyword
+
+
+@app.route('/search-intent/predictions/<keyword>', methods=['GET'])
 def get_prediction(keyword):
     # Validate authorization header with JWT
     if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
@@ -111,8 +175,10 @@ def get_prediction(keyword):
         transactional=p[0]['transactional'],
     )
 
+# Find multiple predictions by keyword
 
-@app.route('/search-intent/getpredictions', methods=['POST'])
+
+@app.route('/search-intent/predictions', methods=['POST'])
 def get_predictions():
     # Validate authorization header with JWT
     if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
@@ -129,14 +195,62 @@ def get_predictions():
                 'error': 'No associated predictions found for this keyword.'
             })
         else:
-            results.append({
-                'keyword': keyword,
-                'informational': p[0]['informational'],
-                'navigational': p[0]['navigational'],
-                'transactional': p[0]['transactional'],
-            })
+            results.append(p[0])
 
     return jsonify(status=1, predictions=results)
+
+# Find multiple predictions by keyword
+
+# @todo Test pagination
+
+
+@app.route('/search-intent/csvs/<csv_file_date>/predictions', methods=['GET'])
+def get_predictions_by_csv(csv_file_date):
+    if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
+        return jsonify(status=0, error='Unauthorized request.'), 401
+
+    # Validate date
+    try:
+        csv_file_date = datetime.strptime(csv_file_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify(status=0, error='Invalid date format.'), 401
+
+    # Validate page
+    if not request.args.get('page') is None and not re.match('^[a-zA-Z0-9_]+$', request.args.get('page')):
+        return jsonify(status=0, error='Invalid page format.')
+
+    # Read predictions from the database
+    results = app.config['CASSANDRA'].retrieve_predictions_by_csv(
+        csv_file_date,
+        request.args.get('page')
+    )
+
+    return jsonify(
+        status=1,
+        predictions=results['predictions'],
+        next_paging_state=results['next_paging_state']
+    )
+
+# Find prediction statistics (counter)
+
+
+@app.route('/search-intent/statistics', methods=['GET'])
+def get_statistics():
+    # Validate authorization header with JWT
+    if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
+        return jsonify(status=0, error='Unauthorized request.'), 401
+
+    s = app.config['CASSANDRA'].retrieve_statistics()
+
+    if len(s) == 0:
+        return jsonify(status=0, error='No associated statistics found.')
+
+    return jsonify(
+        status=1,
+        informational=int(s[0]['informational'] or 0),
+        navigational=int(s[0]['navigational'] or 0),
+        transactional=int(s[0]['transactional'] or 0),
+    )
 
 
 if __name__ == '__main__':
