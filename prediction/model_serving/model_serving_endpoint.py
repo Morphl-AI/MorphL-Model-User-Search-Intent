@@ -65,6 +65,10 @@ class Cassandra:
         self.prep_stmts['predictions']['multiple_by_csv'] = self.session.prepare(
             'SELECT keyword, informational, navigational, transactional FROM usi_csv_predictions_by_csv WHERE csv_file_date = ?')
 
+        # Find predictions by csv file (date) and keyword
+        self.prep_stmts['predictions']['multiple_by_csv_keyword'] = self.session.prepare(
+            'SELECT keyword, informational, navigational, transactional FROM usi_csv_predictions_by_csv WHERE csv_file_date = ? AND keyword = ?')
+
         # Find predictions statistics (counters)
         self.prep_stmts['statistics']['count'] = self.session.prepare(
             'SELECT informational, navigational, transactional FROM usi_csv_predictions_statistics WHERE always_zero = 0')
@@ -97,6 +101,10 @@ class Cassandra:
             'next_paging_state': results.paging_state.hex(
             ) if results.has_more_pages == True else 0
         }
+
+    def retrieve_predictions_by_csv_keyword(self, csv_file_date, keyword):
+        bind_list = [csv_file_date, keyword]
+        return self.session.execute(self.prep_stmts['predictions']['multiple_by_csv_keyword'], bind_list, timeout=self.CASS_REQ_TIMEOUT)._current_rows
 
     def retrieve_statistics(self):
         return self.session.execute(self.prep_stmts['statistics']['count'], timeout=self.CASS_REQ_TIMEOUT)._current_rows
@@ -163,7 +171,7 @@ def get_prediction(keyword):
         return jsonify(status=0, error='Unauthorized request.'), 401
 
     # Escape input (special characters) and search database
-    p = app.config['CASSANDRA'].retrieve_prediction(escape(keyword))
+    p = app.config['CASSANDRA'].retrieve_prediction(escape(keyword.lower()))
 
     if len(p) == 0:
         return jsonify(status=0, error='No associated predictions found for this keyword.')
@@ -188,7 +196,8 @@ def get_predictions():
 
     results = []
     for keyword in keywords:
-        p = app.config['CASSANDRA'].retrieve_prediction(escape(keyword))
+        p = app.config['CASSANDRA'].retrieve_prediction(
+            escape(keyword.lower()))
         if len(p) == 0:
             results.append({
                 'keyword': keyword,
@@ -201,11 +210,10 @@ def get_predictions():
 
 # Find multiple predictions by keyword
 
-# @todo Test pagination
 
-
-@app.route('/search-intent/csvs/<csv_file_date>/predictions', methods=['GET'])
-def get_predictions_by_csv(csv_file_date):
+@app.route('/search-intent/csvs/<csv_file_date>/predictions', methods=['GET'], defaults={'keyword': None})
+@app.route('/search-intent/csvs/<csv_file_date>/predictions/<keyword>', methods=['GET'])
+def get_predictions_by_csv(csv_file_date, keyword):
     if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
         return jsonify(status=0, error='Unauthorized request.'), 401
 
@@ -220,6 +228,17 @@ def get_predictions_by_csv(csv_file_date):
         return jsonify(status=0, error='Invalid page format.')
 
     # Read predictions from the database
+    if keyword is not None:
+        # Escape input (special characters) and search database for particular keyword
+        p = app.config['CASSANDRA'].retrieve_predictions_by_csv_keyword(
+            csv_file_date, escape(keyword.lower()))
+
+        return jsonify(
+            status=1,
+            predictions=p,
+            next_paging_state=0
+        )
+
     results = app.config['CASSANDRA'].retrieve_predictions_by_csv(
         csv_file_date,
         request.args.get('page')
