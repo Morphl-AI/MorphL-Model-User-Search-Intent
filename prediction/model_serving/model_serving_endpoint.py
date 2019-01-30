@@ -63,7 +63,7 @@ class Cassandra:
 
         # Find predictions by csv file (date)
         self.prep_stmts['predictions']['multiple_by_csv'] = self.session.prepare(
-            'SELECT keyword, informational, navigational, transactional FROM usi_csv_predictions_by_csv WHERE csv_file_date = ? LIMIT 100')
+            'SELECT keyword, informational, navigational, transactional FROM usi_csv_predictions_by_csv WHERE csv_file_date = ?')
 
         # Find predictions statistics (counters)
         self.prep_stmts['statistics']['count'] = self.session.prepare(
