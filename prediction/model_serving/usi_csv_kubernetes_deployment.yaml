@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: usi-csv-deployment
+  labels:
+    run: usi-csv
+  namespace: default
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      run: usi-csv
+  template:
+    metadata:
+      labels:
+        run: usi-csv
+    spec:
+      containers:
+        - name: usi-csv
+          image: pythoncontainer
+          command:
+            [
+              "bash",
+              "/opt/usi_csv/prediction/model_serving/runmodelservingendpoint.sh",
+            ]
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 6868
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: environment-configmap
+          volumeMounts:
+            - name: opt-usi-csv
+              mountPath: /opt/usi_csv
+      volumes:
+        - name: opt-usi-csv
+          hostPath:
+            path: /opt/usi_csv
