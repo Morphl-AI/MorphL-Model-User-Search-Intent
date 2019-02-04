@@ -6,7 +6,7 @@ CREATE TABLE morphl.usi_csv_files (
   PRIMARY KEY ((always_zero), day_of_data_capture)
 ) WITH CLUSTERING ORDER BY (day_of_data_capture DESC);
 
-CREATE TABLE morphl.usi_csv_keywords_by_csv (
+CREATE TABLE morphl.usi_csv_features_raw_p (
   csv_file_date date,
   group_id varchar,
   keyword_id varchar,
@@ -14,8 +14,8 @@ CREATE TABLE morphl.usi_csv_keywords_by_csv (
   impressions int,
   clicks int,
   keyword text,
-  PRIMARY KEY ((keyword_id, group_id), csv_file_date)
-) WITH CLUSTERING ORDER BY (csv_file_date ASC);
+  PRIMARY KEY ((csv_file_date), keyword)
+);
 
 CREATE TABLE morphl.usi_csv_predictions (
   keyword text,
