@@ -18,4 +18,5 @@ class PredictionsStatisticsRepo:
         }
 
     def update(self, counter, values):
-        self.session.execute(self.prep_update_statement[counter], values)
+        self.session.execute(
+            self.prep_update_statement[counter], values, timeout=3600.0)

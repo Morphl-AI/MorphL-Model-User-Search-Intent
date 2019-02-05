@@ -14,6 +14,6 @@ class PredictionsFeaturesRawRepo:
         bind_list = [csv_file_date]
         if paging_state is not None:
             return self.session.execute(
-                self.prep_select_statement, bind_list, paging_state=paging_state)
+                self.prep_select_statement, bind_list, paging_state=paging_state, timeout=3600.0)
 
-        return self.session.execute(self.prep_select_statement, bind_list)
+        return self.session.execute(self.prep_select_statement, bind_list, timeout=3600.0)
