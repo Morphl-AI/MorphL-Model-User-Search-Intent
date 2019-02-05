@@ -29,8 +29,8 @@ class BatchInference:
 
     def save_predictions(self, values):
         if len(values) > 0:
-            for val_set in values:
-                self.predictions_repo.batch_insert(val_set.values())
+            batch_values = [list(val_set.values()) for val_set in values]
+            self.predictions_repo.batch_insert(batch_values)
 
     def run(self):
         print('Run batch inference')
@@ -44,7 +44,6 @@ class BatchInference:
             # Read raw keywords from the database
             results = self.predictions_features_raw_repo.select(
                 DAY_AS_STR, paging_state)
-            print(results._current_rows, results.has_more_pages)
 
             values = []
 

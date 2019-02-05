@@ -16,6 +16,9 @@ class EmbeddingManager:
         return self.embedding.vectors[index]
 
     def get_words_embeddings(self, query):
+        # Convert to lowercase and ignore broad operator (+)
+        query = query.replace("+", "").lower()
+
         result = []
 
         for word in query.split(" "):
