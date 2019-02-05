@@ -32,6 +32,20 @@ class BatchInference:
             batch_values = [list(val_set.values()) for val_set in values]
             self.predictions_repo.batch_insert(batch_values)
 
+            batch_values_with_date = [[DAY_AS_STR] +
+                                      val_set for val_set in batch_values]
+            self.predictions_by_csv_repo.batch_insert(batch_values_with_date)
+
+            # Count predictions for each intent (use 0.5 threshold)
+            for intent in ['informational', 'navigational', 'transactional']:
+                no_predictions = sum(
+                    1 for val_set in values if val_set['informational'] > 0.5)
+
+                print('count ', intent, no_predictions)
+
+                self.predictions_statistics_repo.update(
+                    intent, no_predictions)
+
     def run(self):
         print('Run batch inference')
 
