@@ -39,12 +39,10 @@ class BatchInference:
             # Count predictions for each intent (use 0.5 threshold)
             for intent in ['informational', 'navigational', 'transactional']:
                 no_predictions = sum(
-                    1 for val_set in values if val_set['informational'] > 0.5)
-
-                print('count ', intent, no_predictions)
+                    1 for val_set in values if val_set[intent] > 0.5)
 
                 self.predictions_statistics_repo.update(
-                    intent, no_predictions)
+                    intent, [no_predictions])
 
     def run(self):
         print('Run batch inference')
