@@ -2,6 +2,7 @@ from os import getenv
 
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster
+from cassandra.query import dict_factory
 
 
 class CassandraSessionManager:
@@ -18,3 +19,5 @@ class CassandraSessionManager:
                                self.MORPHL_SERVER_IP_ADDRESS], auth_provider=self.auth_provider)
 
         self.session = self.cluster.connect(self.MORPHL_CASSANDRA_KEYSPACE)
+        self.session.row_factory = dict_factory
+        self.session.default_fetch_size = 100
