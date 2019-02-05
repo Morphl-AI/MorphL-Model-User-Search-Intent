@@ -50,8 +50,6 @@ class BatchInference:
         has_more_pages = True
         paging_state = None
 
-        i = 0
-
         while has_more_pages:
             # Read raw keywords from the database
             results = self.predictions_features_raw_repo.select(
@@ -66,7 +64,7 @@ class BatchInference:
                         row['keyword'])
                 except Exception as e:
                     word_vec = None
-                    print(row['keyword'], "Some words not in dict", e)
+                    # print(row['keyword'], "Some words not in dict", e)
 
                 if word_vec is not None:
                     # Get prediction values
@@ -84,11 +82,6 @@ class BatchInference:
 
             has_more_pages = results.has_more_pages
             paging_state = results.paging_state
-
-            i += 1
-
-            if i > 2:
-                break
 
 
 def main():
