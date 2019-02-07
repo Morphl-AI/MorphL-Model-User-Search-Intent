@@ -1,28 +1,23 @@
 from cassandra.query import BatchStatement
 
 
-class KeywordsByCSVRepo:
+class PredictionsByCSVRepo:
 
     def __init__(self, session):
         self.session = session
 
         insert_statement = """
-		INSERT INTO usi_csv_features_raw_p (
-		csv_file_date,
-		group_id,
-		keyword_id,
-		timestamp,
-		impressions,
-		clicks,
-		keyword
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		"""
+        INSERT INTO usi_csv_predictions_by_csv (
+            csv_file_date,
+            keyword,
+            informational,
+            navigational,
+            transactional
+        ) VALUES (?,?,?,?,?)"""
 
         self.prep_insert_statement = session.prepare(insert_statement)
 
     def insert(self, values):
-        print(values)
         self.session.execute(self.prep_insert_statement,
                              values, timeout=3600.0)
 

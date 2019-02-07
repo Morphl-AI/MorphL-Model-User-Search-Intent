@@ -2,3 +2,4 @@
 
 .idea/
 **/*.pyc
+.vector_cache/
