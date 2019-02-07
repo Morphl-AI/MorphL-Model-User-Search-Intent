@@ -14,13 +14,6 @@ class GoogleStorageManager:
 		self.USI_GOOGLE_CLOUD_UNPROCESSED = getenv('USI_GOOGLE_CLOUD_UNPROCESSED')
 		self.USI_GOOGLE_CLOUD_SERVICE_ACCOUNT = getenv('USI_GOOGLE_CLOUD_SERVICE_ACCOUNT')
 
-		self.USI_CSV_GROUP_ID = "ID_GRUPO"
-		self.USI_CSV_KEYWORD_ID = "ID_KEYWORD"
-		self.USI_CSV_TIMESTAMP = "FECHA"
-		self.USI_CSV_IMPRESSIONS = "IMPRESSIONS"
-		self.USI_CSV_CLICKS = "CLICKS"
-		self.USI_CSV_KEYWORD = "KEYWORD"
-
 		self.fs = gcsfs.GCSFileSystem(project=self.USI_GOOGLE_CLOUD_PROJECT, token=self.USI_GOOGLE_CLOUD_SERVICE_ACCOUNT)
 
 	def get_filenames(self, path_in_bucket=''):
