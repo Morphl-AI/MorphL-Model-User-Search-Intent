@@ -22,7 +22,6 @@ class KeywordsByCSVRepo:
 		self.prep_insert_statement = session.prepare(insert_statement)
 
 	def insert(self, values):
-		print(values)
 		self.session.execute(self.prep_insert_statement, values, timeout=3600.0)
 
 	def batch_insert(self, batch_values):
