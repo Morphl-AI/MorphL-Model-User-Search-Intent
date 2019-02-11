@@ -36,6 +36,10 @@ You can read in detail about this process in [our paper from arXiv](https://arxi
 
 This repository contains the code for the user search intent pipelines. The code runs on the MorphL Platform Orchestrator and creates 2 pipelines: Ingestion Pipeline and Prediction Pipeline.
 
+<div align="center">
+    <img src="https://raw.githubusercontent.com/Morphl-AI/MorphL-Architecture/master/user-search-intent/UserSearchIntent.Architecture.png" style="width:800px; height: auto;" />
+</div>
+
 ### Ingestion Pipeline
 
 This pipeline is responsible for authenticating to a Google Cloud Storage bucket using a service account and downloading data composed of multiple csvs files.
