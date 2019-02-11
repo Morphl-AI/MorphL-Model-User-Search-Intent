@@ -1,9 +1,9 @@
 from airflow.models import DAG
 from airflow.operators.bash_operator import BashOperator
-from datetime import datetime
+import datetime
 
 args = {'owner': 'airflow',
-		'start_date': datetime(2018, 1, 1),
+		'start_date': datetime.datetime(2018, 1, 1),
 		'retries': 16,
 		'retry_delay': datetime.timedelta(minutes=30)}
 
