@@ -1,6 +1,6 @@
-import datetime
 from airflow.models import DAG
 from airflow.operators.bash_operator import BashOperator
+from datetime import datetime
 
 args = {'owner': 'airflow',
 		'start_date': datetime(2018, 1, 1),
