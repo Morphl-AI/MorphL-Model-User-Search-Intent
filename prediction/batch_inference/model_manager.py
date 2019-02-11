@@ -33,7 +33,7 @@ def model_accuracy(y_true, y_pred):
 class ModelManager:
 
     def __init__(self):
-        model_file = f'/opt/models/{DAY_AS_STR}_{UNIQUE_HASH}_usi_csv_en_model.h5'
+        model_file = f'/opt/models/usi_csv_en_model.h5'
 
         self.model = load_model(model_file, custom_objects={
                                 'kerasAcc': model_accuracy})
