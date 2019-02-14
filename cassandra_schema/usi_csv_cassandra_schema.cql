@@ -3,8 +3,20 @@ CREATE KEYSPACE IF NOT EXISTS morphl WITH REPLICATION = {'class': 'SimpleStrateg
 CREATE TABLE morphl.usi_csv_files (
   always_zero int,
   day_of_data_capture date,
+  is_processed boolean,
   PRIMARY KEY ((always_zero), day_of_data_capture)
 ) WITH CLUSTERING ORDER BY (day_of_data_capture DESC);
+
+CREATE TABLE morphl.usi_csv_features_raw_p (
+  csv_file_date date,
+  group_id varchar,
+  keyword_id varchar,
+  timestamp date,
+  impressions int,
+  clicks int,
+  keyword text,
+  PRIMARY KEY ((csv_file_date), keyword)
+);
 
 CREATE TABLE morphl.usi_csv_predictions (
   keyword text,
