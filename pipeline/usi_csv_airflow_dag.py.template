@@ -36,8 +36,8 @@ ingestion_operator = BashOperator(
 
 # Do not remove the extra space at the end (the one after 'run_batch_inference.sh')
 run_batch_inference = [
-    'docker run --rm',
     'MODELS_DIR=/opt/models',
+    'docker run --rm',
     '-v /opt/secrets:/opt/secrets:ro',
     '-v /opt/usi_csv:/opt/usi_csv:ro',
     '-v /opt/models:/opt/models:ro',
