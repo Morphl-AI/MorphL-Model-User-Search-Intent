@@ -3,6 +3,8 @@ from keras.models import load_model
 import keras.backend as K
 import numpy as np
 
+MODELS_DIR = getenv('MODELS_DIR')
+
 # @todo Do we need this accuracy function here? TBD - Try exporting the Keras model as json.
 
 
@@ -30,7 +32,7 @@ def model_accuracy(y_true, y_pred):
 class ModelManager:
 
     def __init__(self):
-        model_file = f'/opt/models/usi_csv_en_model.h5'
+        model_file = f'{MODELS_DIR}/usi_csv_en_model.h5'
 
         self.model = load_model(model_file, custom_objects={
                                 'kerasAcc': model_accuracy})
