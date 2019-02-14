@@ -1,0 +1,58 @@
+from airflow.models import DAG
+from airflow.operators.bash_operator import BashOperator
+import datetime
+
+args = {'owner': 'airflow',
+        'start_date': datetime.datetime.strptime('START_DATE', '%Y-%m-%d'),
+        'retries': 16,
+        'retry_delay': datetime.timedelta(minutes=30)}
+
+dag = DAG(dag_id='usi_csv_pipeline',
+          default_args=args,
+          schedule_interval='0 12 * * *')
+
+# Do not remove the extra space at the end (the one after 'run_ingestion.sh')
+run_ingestion = [
+    'docker run --rm',
+    '-v /opt/secrets:/opt/secrets:ro',
+    '-v /opt/usi_csv:/opt/usi_csv:ro',
+    '-e MORPHL_SERVER_IP_ADDRESS',
+    '-e MORPHL_CASSANDRA_USERNAME',
+    '-e MORPHL_CASSANDRA_KEYSPACE',
+    '-e MORPHL_CASSANDRA_PASSWORD',
+    '-e USI_GOOGLE_CLOUD_PROJECT',
+    '-e USI_GOOGLE_CLOUD_BUCKET',
+    '-e USI_GOOGLE_CLOUD_PROCESSED',
+    '-e USI_GOOGLE_CLOUD_UNPROCESSED',
+    '-e USI_GOOGLE_CLOUD_SERVICE_ACCOUNT',
+    'pythoncontainer',
+    'bash /opt/usi_csv/ingestion/run_ingestion.sh ']
+run_ingestion_cmd = ' '.join(run_ingestion)
+
+ingestion_operator = BashOperator(
+    task_id='run_ingestion',
+    bash_command=run_ingestion_cmd,
+    dag=dag)
+
+# Do not remove the extra space at the end (the one after 'run_batch_inference.sh')
+run_batch_inference = [
+    'MODELS_DIR=/opt/models',
+    'docker run --rm',
+    '-v /opt/secrets:/opt/secrets:ro',
+    '-v /opt/usi_csv:/opt/usi_csv:ro',
+    '-v /opt/models:/opt/models:ro',
+    '-e MODELS_DIR',
+    '-e MORPHL_SERVER_IP_ADDRESS',
+    '-e MORPHL_CASSANDRA_USERNAME',
+    '-e MORPHL_CASSANDRA_KEYSPACE',
+    '-e MORPHL_CASSANDRA_PASSWORD',
+    'pythoncontainer',
+    'bash /opt/usi_csv/prediction/batch_inference/run_batch_inference.sh ']
+run_batch_inference_cmd = ' '.join(run_batch_inference)
+
+batch_inference_operator = BashOperator(
+    task_id='run_batch_inference',
+    bash_command=run_batch_inference_cmd,
+    dag=dag)
+
+ingestion_operator >> batch_inference_operator
