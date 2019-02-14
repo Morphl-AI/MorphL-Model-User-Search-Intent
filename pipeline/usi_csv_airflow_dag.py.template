@@ -3,7 +3,7 @@ from airflow.operators.bash_operator import BashOperator
 import datetime
 
 args = {'owner': 'airflow',
-        'start_date': datetime.datetime(2018, 1, 1),
+        'start_date': datetime.datetime.strptime(START_DATE, '%Y-%m-%d'),
         'retries': 16,
         'retry_delay': datetime.timedelta(minutes=30)}
 
