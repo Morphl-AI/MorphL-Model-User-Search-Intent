@@ -27,10 +27,11 @@ echo 'Setting up the pipeline...'
 echo
 
 stop_airflow.sh
-
-START_DATE=$(date +%Y-%m-%d)
+rm -rf /home/airflow/airflow/dags/*
+airflow resetdb -y &>/dev/null
 
 # Write dynamic variables to the Airflow template file
+START_DATE=$(date +%Y-%m-%d)
 sed "s/START_DATE/${START_DATE}/g" /opt/usi_csv/pipeline/usi_csv_airflow_dag.py.template > /home/airflow/airflow/dags/usi_csv_airflow_dag.py
 
 start_airflow.sh
