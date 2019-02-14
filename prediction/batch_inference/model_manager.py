@@ -3,9 +3,6 @@ from keras.models import load_model
 import keras.backend as K
 import numpy as np
 
-DAY_AS_STR = getenv('DAY_AS_STR')
-UNIQUE_HASH = getenv('UNIQUE_HASH')
-
 # @todo Do we need this accuracy function here? TBD - Try exporting the Keras model as json.
 
 

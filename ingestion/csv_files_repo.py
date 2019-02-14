@@ -9,8 +9,9 @@ class CSVFilesRepo:
         insert_statement = """
 		INSERT INTO usi_csv_files (
             always_zero,
-            day_of_data_capture
-		) VALUES (0, ?)
+            day_of_data_capture,
+            is_processed
+		) VALUES (0, ?, false)
 		"""
 
         self.prep_insert_statement = session.prepare(insert_statement)
