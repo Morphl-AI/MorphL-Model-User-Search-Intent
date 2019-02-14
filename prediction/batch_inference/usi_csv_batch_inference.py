@@ -53,6 +53,8 @@ class BatchInference:
             return
 
         for csv_file in csv_files:
+            print('Processing ', csv_file['day_of_data_capture'])
+
             has_more_pages = True
             paging_state = None
 
