@@ -2,7 +2,7 @@ import os
 from os import getenv
 
 import gcsfs
-import pandas as pd
+import dask.dataframe as dd
 
 
 class GoogleStorageManager:
@@ -34,5 +34,5 @@ class GoogleStorageManager:
 
 	def get_df(self, csv_path_in_bucket):
 		with self.fs.open(self.USI_GOOGLE_CLOUD_BUCKET + '/' + csv_path_in_bucket) as f:
-			df = pd.read_csv(f, sep="\t")
+			df = dd.read_csv(f, sep="\t")
 			return df
