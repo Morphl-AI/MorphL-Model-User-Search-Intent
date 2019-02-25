@@ -21,9 +21,6 @@ class DataIngestion:
             os.path.basename(csv_path))[0]
         return self.csv_processor.format_date(filename_without_extension)
 
-    def row_processor(self, csv_date):
-        return lambda values: [values.insert(0, csv_date), self.keywords_repo.insert(values)]
-
     def file_processor(self, csv_date):
         self.csv_files_repo.insert([csv_date])
 
@@ -35,7 +32,9 @@ class DataIngestion:
             csv_date = self.get_csv_date(csv_path)
 
             self.file_processor(csv_date)
-            self.csv_processor.process_df(df, self.row_processor(csv_date))
+
+            df.map_partitions(self.csv_processor.process_df, csv_date)
+            
             self.storage_manager.move_to_processed(csv_path)
 
             print('Done with ' + csv_path)

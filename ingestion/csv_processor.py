@@ -1,3 +1,6 @@
+from keywords_repo import KeywordsByCSVRepo
+from session_manager import CassandraSessionManager
+
 class CsvProcessor:
 
 	def __init__(self):
@@ -8,13 +11,15 @@ class CsvProcessor:
 		self.USI_CSV_CLICKS = "CLICKS"
 		self.USI_CSV_KEYWORD = "KEYWORD"
 
+		self.session_manager = CassandraSessionManager()
+		self.keywords_repo = KeywordsByCSVRepo(self.session_manager.session)
+
 	def format_date(self, date_str):
 		return "{}-{}-{}".format(date_str[:4], date_str[4:6], date_str[6:8])
 
-	def get_row_values(self, row):
-		return [str(row[self.USI_CSV_GROUP_ID]), str(row[self.USI_CSV_KEYWORD_ID]), self.format_date(str(row[self.USI_CSV_TIMESTAMP])), row[self.USI_CSV_IMPRESSIONS], row[self.USI_CSV_CLICKS], row[self.USI_CSV_KEYWORD]]
+	def process_df(self, partition_df, csv_date):
+		def persist_row (series_obj, date):
+			values = [date, str(series_obj[self.USI_CSV_GROUP_ID]), str(series_obj[self.USI_CSV_KEYWORD_ID]), self.format_date(str(series_obj[self.USI_CSV_TIMESTAMP])), series_obj[self.USI_CSV_IMPRESSIONS], series_obj[self.USI_CSV_CLICKS], series_obj[self.USI_CSV_KEYWORD]]
+			self.keywords_repo.insert(values)
 
-	def process_df(self, df, row_processor):
-		for index, row in df.iterrows():
-			values = self.get_row_values(row)
-			row_processor(values)
+		partition_df.apply(persist_row, date=csv_date)
