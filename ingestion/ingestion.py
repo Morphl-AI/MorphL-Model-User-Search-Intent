@@ -33,8 +33,9 @@ class DataIngestion:
 
             self.file_processor(csv_date)
 
-            df.map_partitions(self.csv_processor.process_df, csv_date)
-            
+            df['token'] = df.map_partitions(
+                self.csv_processor.process_df, csv_date, meta=('token', int))
+
             self.storage_manager.move_to_processed(csv_path)
 
             print('Done with ' + csv_path)
