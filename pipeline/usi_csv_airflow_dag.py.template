@@ -11,6 +11,13 @@ dag = DAG(dag_id='usi_csv_pipeline',
           default_args=args,
           schedule_interval='0 12 * * *')
 
+run_truncate_tables_cmd = 'bash /opt/usi_csv/pipeline/usi_csv_truncate_tables_before_ingestion.sh '
+
+truncate_tables_operator = BashOperator(
+    task_id='truncate_tables',
+    bash_command=run_truncate_tables_cmd,
+    dag=dag)
+
 # Do not remove the extra space at the end (the one after 'run_ingestion.sh')
 run_ingestion = [
     'docker run --rm',
@@ -55,4 +62,4 @@ batch_inference_operator = BashOperator(
     bash_command=run_batch_inference_cmd,
     dag=dag)
 
-ingestion_operator >> batch_inference_operator
+truncate_tables_operator >> ingestion_operator >> batch_inference_operator

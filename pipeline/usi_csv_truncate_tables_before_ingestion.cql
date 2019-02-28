@@ -1,0 +1,1 @@
+TRUNCATE TABLE morphl.usi_csv_features_raw_p;
