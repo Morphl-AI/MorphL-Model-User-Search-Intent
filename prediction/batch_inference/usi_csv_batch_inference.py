@@ -37,17 +37,27 @@ class BatchInference:
         self.predictions_statistics_repo = PredictionsStatisticsRepo(
             self.session_manager.session)
 
-    def save_predictions(self, csv_date, df):
+    def save_predictions(self, df):
         if len(df.head(1)) > 0:
-            save_options_usi_csv_predictions = {
+            save_options_usi_predictions_by_csv_file = {
+                'keyspace': self.MORPHL_CASSANDRA_KEYSPACE,
+                'table': 'usi_csv_predictions_by_csv'}
+
+            (df.repartition(32).write
+             .format('org.apache.spark.sql.cassandra')
+                .mode('append')
+               .options(**save_options_usi_predictions_by_csv_file)
+             .save())
+
+            save_options_usi_predictions = {
                 'keyspace': self.MORPHL_CASSANDRA_KEYSPACE,
                 'table': 'usi_csv_predictions'}
 
-            (df.repartition(32)
+            (df.drop('csv_file_date').repartition(32)
              .write
              .format('org.apache.spark.sql.cassandra')
-             .mode('append')
-             .options(**save_options_usi_csv_predictions)
+                .mode('append')
+               .options(**save_options_usi_predictions)
              .save())
 
     def run(self):
@@ -66,10 +76,6 @@ class BatchInference:
 
         raw_features_df = (self.spark_session_manager.get_spark_df(
             load_options))
-
-        save_options_predictions = {
-            'keyspace': self.MORPHL_CASSANDRA_KEYSPACE,
-            'table': ('usi_csv_predictions')}
 
         def process_keyword(keyword):
             try:
@@ -92,12 +98,12 @@ class BatchInference:
             features_by_date_df = raw_features_df.filter(
                 "csv_file_date == '{}'".format(csv_file['day_of_data_capture']))
 
-            predictions_df = features_by_date_df.select(processor_udf(
-                "keyword").alias("predictions"), features_by_date_df['keyword'])
-            predictions_df = predictions_df.filter(f.col("predictions").isNotNull()).select(predictions_df['keyword'], predictions_df.predictions[0].alias(
+            predictions_df = features_by_date_df.select(processor_udf("keyword").alias(
+                "predictions"), features_by_date_df['keyword'], features_by_date_df['csv_file_date'])
+            predictions_df = predictions_df.filter(f.col("predictions").isNotNull()).select(predictions_df['csv_file_date'], predictions_df['keyword'], predictions_df.predictions[0].alias(
                 'informational'), predictions_df.predictions[1].alias('navigational'), predictions_df.predictions[2].alias('transactional'))
             self.save_predictions(
-                csv_file['day_of_data_capture'], predictions_df)
+                predictions_df)
 
 
 def main():
