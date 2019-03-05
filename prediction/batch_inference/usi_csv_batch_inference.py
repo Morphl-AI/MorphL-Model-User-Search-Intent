@@ -60,6 +60,18 @@ class BatchInference:
                .options(**save_options_usi_predictions)
              .save())
 
+            def count_prediction(condition): return f.sum(
+                f.when(condition, 1).otherwise(0))
+
+            df.groupBy('csv_file_date').agg(
+                count_prediction(f.col('informational') > 0.5).alias(
+                    'informational_count'),
+                count_prediction(f.col('transactional') > 0.5).alias(
+                    'transactional_count'),
+                count_prediction(f.col('navigational') > 0.5).alias(
+                    'navigational_count')
+            )
+
     def run(self):
         print('Run batch inference')
 
