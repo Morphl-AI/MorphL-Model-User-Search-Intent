@@ -1,9 +1,15 @@
 from os import getenv
 import numpy as np
 
+from pyspark.sql import functions as f
+from pyspark.sql.functions import udf
+from pyspark.sql.types import ArrayType
+from pyspark.sql.types import FloatType
+
 from csv_files_repo import CSVFilesRepo
 from predictions_features_raw_repo import PredictionsFeaturesRawRepo
 from predictions_repo import PredictionsRepo
+from spark_session_manager import SparkSessionManager
 from predictions_by_csv_repo import PredictionsByCSVRepo
 from predictions_statistics_repo import PredictionsStatisticsRepo
 from session_manager import CassandraSessionManager
@@ -14,7 +20,11 @@ from embedding_manager import EmbeddingManager
 class BatchInference:
 
     def __init__(self):
+
+        self.MORPHL_CASSANDRA_KEYSPACE = getenv('MORPHL_CASSANDRA_KEYSPACE')
+
         self.session_manager = CassandraSessionManager()
+        self.spark_session_manager = SparkSessionManager()
         self.model_manager = ModelManager()
         self.embedding_manager = EmbeddingManager()
 
@@ -27,76 +37,67 @@ class BatchInference:
         self.predictions_statistics_repo = PredictionsStatisticsRepo(
             self.session_manager.session)
 
-    def save_predictions(self, csv_date, values):
-        if len(values) > 0:
-            batch_values = [list(val_set.values()) for val_set in values]
-            self.predictions_repo.batch_insert(batch_values)
+    def save_predictions(self, csv_date, df):
+        if len(df.head(1)) > 0:
+            save_options_usi_csv_predictions = {
+                'keyspace': self.MORPHL_CASSANDRA_KEYSPACE,
+                'table': 'usi_csv_predictions'}
 
-            batch_values_with_date = [[csv_date] +
-                                      val_set for val_set in batch_values]
-            self.predictions_by_csv_repo.batch_insert(batch_values_with_date)
-
-            # Count predictions for each intent (use 0.5 threshold)
-            for intent in ['informational', 'navigational', 'transactional']:
-                no_predictions = sum(
-                    1 for val_set in values if val_set[intent] > 0.5)
-
-                self.predictions_statistics_repo.update(
-                    intent, [no_predictions])
+            (df.repartition(32)
+             .write
+             .format('org.apache.spark.sql.cassandra')
+             .mode('append')
+             .options(**save_options_usi_csv_predictions)
+             .save())
 
     def run(self):
         print('Run batch inference')
 
         # Select unprocessed CSV files
         csv_files = self.csv_files_repo.select([False])._current_rows
+
         if len(csv_files) == 0:
             return
 
+        load_options = {
+            'keyspace': self.MORPHL_CASSANDRA_KEYSPACE,
+            'table': 'usi_csv_features_raw_p',
+            'spark.cassandra.input.fetch.size_in_rows': '150'}
+
+        raw_features_df = (self.spark_session_manager.get_spark_df(
+            load_options))
+
+        save_options_predictions = {
+            'keyspace': self.MORPHL_CASSANDRA_KEYSPACE,
+            'table': ('usi_csv_predictions')}
+
+        def process_keyword(keyword):
+            try:
+                embedding_manager = EmbeddingManager()
+                word_vector = embedding_manager.get_words_embeddings(keyword)
+            except Exception as e:
+                word_vector = None
+
+            if word_vector is not None:
+                model_manager = ModelManager()
+                prediction = model_manager.predict(word_vector)
+                predictions_list = prediction.tolist()[0]
+                return predictions_list
+
+        processor_udf = udf(process_keyword, ArrayType(FloatType()))
+
         for csv_file in csv_files:
             print('Processing ', csv_file['day_of_data_capture'])
+            print(csv_file['day_of_data_capture'])
+            features_by_date_df = raw_features_df.filter(
+                "csv_file_date == '{}'".format(csv_file['day_of_data_capture']))
 
-            has_more_pages = True
-            paging_state = None
-
-            while has_more_pages:
-                # Read raw keywords from the database
-                results = self.predictions_features_raw_repo.select(
-                    csv_file['day_of_data_capture'], paging_state)
-
-                if len(results._current_rows) > 0:
-                    values = []
-
-                    for row in results._current_rows:
-                        # Get embeddings for each keyword
-                        try:
-                            word_vec = self.embedding_manager.get_words_embeddings(
-                                row['keyword'])
-                        except Exception as e:
-                            word_vec = None
-                            # print(row['keyword'], "Some words not in dict", e)
-
-                        if word_vec is not None:
-                            # Get prediction values
-                            prediction = self.model_manager.predict(word_vec)
-
-                            # !!! Order matters for the insert statements.
-                            values.append({
-                                'keyword': row['keyword'],
-                                'informational': prediction[0][1],
-                                'navigational': prediction[0][2],
-                                'transactional': prediction[0][0]
-                            })
-
-                    self.save_predictions(
-                        csv_file['day_of_data_capture'], values)
-
-                    has_more_pages = results.has_more_pages
-                    paging_state = results.paging_state
-                else:
-                    has_more_pages = False
-
-            # Set file as processed
-            self.csv_files_repo.update([True, csv_file['day_of_data_capture']])
+            predictions_df = features_by_date_df.select(processor_udf(
+                "keyword").alias("predictions"), features_by_date_df['keyword'])
+            predictions_df = predictions_df.filter(f.col("predictions").isNotNull()).select(predictions_df['keyword'], predictions_df.predictions[0].alias(
+                'informational'), predictions_df.predictions[1].alias('navigational'), predictions_df.predictions[2].alias('transactional'))
+            self.save_predictions(
+                csv_file['day_of_data_capture'], predictions_df)
 
 
 def main():
