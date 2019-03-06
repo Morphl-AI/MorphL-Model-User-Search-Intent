@@ -53,7 +53,7 @@ run_batch_inference = [
     '-e MORPHL_CASSANDRA_USERNAME',
     '-e MORPHL_CASSANDRA_KEYSPACE',
     '-e MORPHL_CASSANDRA_PASSWORD',
-    'pythoncontainer',
+    'pysparkcontainer',
     'bash /opt/usi_csv/prediction/batch_inference/run_batch_inference.sh ']
 run_batch_inference_cmd = ' '.join(run_batch_inference)
 
