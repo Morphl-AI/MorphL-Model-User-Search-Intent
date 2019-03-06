@@ -112,16 +112,20 @@ class BatchInference:
 
         for csv_file in csv_files:
             print('Processing ', csv_file['day_of_data_capture'])
-            print(csv_file['day_of_data_capture'])
+
             features_by_date_df = raw_features_df.filter(
                 "csv_file_date == '{}'".format(csv_file['day_of_data_capture']))
 
             predictions_df = features_by_date_df.select(processor_udf("keyword").alias(
                 "predictions"), features_by_date_df['keyword'], features_by_date_df['csv_file_date'])
+
             predictions_df = predictions_df.filter(f.col("predictions").isNotNull()).select(predictions_df['csv_file_date'], predictions_df['keyword'], predictions_df.predictions[0].alias(
                 'informational'), predictions_df.predictions[1].alias('navigational'), predictions_df.predictions[2].alias('transactional'))
+
             self.save_predictions(
                 predictions_df)
+
+            self.csv_files_repo.update([True, csv_file['day_of_data_capture']])
 
 
 def main():
