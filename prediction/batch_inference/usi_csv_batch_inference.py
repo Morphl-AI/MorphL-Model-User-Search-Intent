@@ -7,7 +7,6 @@ from pyspark.sql.types import ArrayType
 from pyspark.sql.types import FloatType
 
 from csv_files_repo import CSVFilesRepo
-from predictions_features_raw_repo import PredictionsFeaturesRawRepo
 
 from spark_session_manager import SparkSessionManager
 from predictions_by_csv_repo import PredictionsByCSVRepo
@@ -29,8 +28,6 @@ class BatchInference:
         self.embedding_manager = EmbeddingManager()
 
         self.csv_files_repo = CSVFilesRepo(self.session_manager.session)
-        self.predictions_features_raw_repo = PredictionsFeaturesRawRepo(
-            self.session_manager.session)
         self.predictions_by_csv_repo = PredictionsByCSVRepo(
             self.session_manager.session)
         self.predictions_statistics_repo = PredictionsStatisticsRepo(
