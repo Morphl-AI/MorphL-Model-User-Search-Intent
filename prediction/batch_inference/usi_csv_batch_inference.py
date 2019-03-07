@@ -2,7 +2,6 @@ from os import getenv
 import numpy as np
 
 from pyspark.sql import functions as f
-from pyspark.sql.functions import udf
 from pyspark.sql.types import ArrayType
 from pyspark.sql.types import FloatType
 
@@ -101,7 +100,7 @@ class BatchInference:
                 predictions_list = prediction.tolist()[0]
                 return predictions_list
 
-        processor_udf = udf(process_keyword, ArrayType(FloatType()))
+        processor_udf = f.udf(process_keyword, ArrayType(FloatType()))
 
         for csv_file in csv_files:
             print('Processing ', csv_file['day_of_data_capture'])
