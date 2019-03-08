@@ -1,4 +1,5 @@
 from os import getenv
+from pyspark.sql import SparkSession
 
 
 class SparkSessionManager:
