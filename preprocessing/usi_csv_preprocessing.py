@@ -137,20 +137,20 @@ def main():
      .save()
      )
 
-    # Save predictions without date to cassandra
-    predictions_simple_df = predictions_by_csv_df.drop(
+    # Save predictions by keyword to cassandra
+    predictions_by_keyword_df = predictions_by_csv_df.drop(
         'csv_file_date').repartition(32)
 
-    predictions_simple_df.cache()
+    predictions_by_keyword_df.cache()
 
-    predictions_simple_df.createOrReplaceTempView('predictions')
+    predictions_by_keyword_df.createOrReplaceTempView('predictions')
 
     save_options_usi_predictions = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
         'table': 'usi_csv_predictions'
     }
 
-    (predictions_simple_df
+    (predictions_by_keyword_df
      .write
      .format('org.apache.spark.sql.cassandra')
      .mode('append')
