@@ -67,9 +67,14 @@ def predict_intent(embeddings):
     # Transform embeddings lists to tensor then numpy array and get predictions as list
     return model.predict(tr.tensor([embeddings]).numpy()).tolist()[0]
 
+# Define aggregation function that checks the given condition
+
+
+def count_prediction(condition): return f.sum(
+    f.when(condition, 1).otherwise(0))
+
+
 # Cassandra read connector function
-
-
 def fetch_from_cassandra(c_table_name, spark_session):
     load_options = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
@@ -95,18 +100,6 @@ def main():
         .config('parquet.enable.summary-metadata', 'true')
         .getOrCreate())
 
-    # Predictions save configuration
-    save_options_usi_predictions = {
-        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
-        'table': 'usi_csv_predictions'
-    }
-
-    # Predictions by csv save configuration
-    save_options_usi_predictions_by_csv = {
-        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
-        'table': 'usi_csv_predictions_by_csv'
-    }
-
     # Get word embeddings from from cassandra
     embeddings_df = (fetch_from_cassandra(
         'usi_csv_word_embeddings', spark_session))
@@ -127,6 +120,34 @@ def main():
         predictions_df.predictions[2].alias('transactional'),
     ).repartition(32)
 
+    # Calculate predictions statistics
+    predictions_statistics_df = predictions_df_final.groupBy('csv_file_date').agg(
+        count_prediction(f.col('informational') >
+                         0.5).alias('informational'),
+        count_prediction(f.col('transactional') >
+                         0.5).alias('transactional'),
+        count_prediction(f.col('navigational') >
+                         0.5).alias('navigational')
+    ).repartition(32)
+
+    # Predictions save configuration
+    save_options_usi_predictions = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions'
+    }
+
+    # Predictions by csv save configuration
+    save_options_usi_predictions_by_csv = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions_by_csv'
+    }
+
+    # Predictions statistics save configuration
+    save_options_usi_predictions_statistics = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions_statistics'
+    }
+
     # Save predictions by csv
     (predictions_df_final
      .write
@@ -143,5 +164,14 @@ def main():
      .format('org.apache.spark.sql.cassandra')
      .mode('append')
      .options(**save_options_usi_predictions)
+     .save()
+     )
+
+    # Save predictions statistics
+    (predictions_statistics_df
+     .write
+     .format('org.apache.spark.sql.cassandra')
+     .mode('append')
+     .options(**save_options_usi_predictions_statistics)
      .save()
      )

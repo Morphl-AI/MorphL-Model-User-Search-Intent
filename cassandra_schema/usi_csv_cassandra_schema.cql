@@ -43,9 +43,9 @@ CREATE TABLE morphl.usi_csv_predictions_by_csv (
 ) WITH CLUSTERING ORDER BY (keyword ASC);
 
 CREATE TABLE morphl.usi_csv_predictions_statistics (
-  always_zero int,
-  informational counter,
-  navigational counter,
-  transactional counter,
-  PRIMARY KEY (always_zero)
+  csv_file_date date,
+  informational int,
+  navigational int,
+  transactional int,
+  PRIMARY KEY (csv_file_date)
 );
