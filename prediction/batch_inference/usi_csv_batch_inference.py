@@ -9,15 +9,21 @@ from keras.models import load_model, model_from_json
 import keras.backend as K
 import numpy as np
 
+
+# Get env variables
 MASTER_URL = 'local[*]'
 APPLICATION_NAME = 'preprocessor'
 MORPHL_SERVER_IP_ADDRESS = getenv('MORPHL_SERVER_IP_ADDRESS')
 MORPHL_CASSANDRA_USERNAME = getenv('MORPHL_CASSANDRA_USERNAME')
 MORPHL_CASSANDRA_PASSWORD = getenv('MORPHL_CASSANDRA_PASSWORD')
 MORPHL_CASSANDRA_KEYSPACE = getenv('MORPHL_CASSANDRA_KEYSPACE')
-MODELS_DIR = '/opt/models'
+MODELS_DIR = getenv('MODELS_DIR')
 
+# Get model path
 model_file = f'{MODELS_DIR}/usi_csv_en_model.h5'
+
+# Custom accuracy function for the prediction model,
+# only needed for training, but the model won't load without it
 
 
 def model_accuracy(y_true, y_pred):
@@ -41,17 +47,27 @@ def model_accuracy(y_true, y_pred):
     return res
 
 
+# Load model with keras, using the custom accuracy function and model file path
 model = load_model(model_file, custom_objects={'kerasAcc': model_accuracy})
 
+# Get model json string
 model_json_string = model.to_json()
+# Get model weights
 model_weights = model.get_weights()
 
+# Load model from json string and set weights so that it can be
+# serialized correctly when being called inside the UDF
 model = model_from_json(model_json_string)
 model.set_weights(model_weights)
 
 
+# Define UDF function that predicts users intent using the model,
+# based on word embeddings vector
 def predict_intent(embeddings):
+    # Transform embeddings lists to tensor then numpy array and get predictions as list
     return model.predict(tr.tensor([embeddings]).numpy()).tolist()[0]
+
+# Cassandra read connector function
 
 
 def fetch_from_cassandra(c_table_name, spark_session):
@@ -79,21 +95,24 @@ def main():
         .config('parquet.enable.summary-metadata', 'true')
         .getOrCreate())
 
+    # Predictions save configuration
     save_options_usi_predictions = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
         'table': 'usi_csv_predictions'
     }
 
-    processed_features_df = (fetch_from_cassandra(
+    # Get word embeddings from from cassandra
+    embeddings_df = (fetch_from_cassandra(
         'usi_csv_word_embeddings', spark_session))
 
-    processed_features_df.show(1)
-
+    # Register prediction UDF
     predict_udf = f.udf(predict_intent, ArrayType(FloatType()))
 
-    predictions_df = processed_features_df.select(
+    # Apply UDF to embeddings dataframe
+    predictions_df = embeddings_df.select(
         'keyword', predict_udf("embeddings").alias("predictions"))
 
+    # Split predictions array based on category
     predictions_df_final = predictions_df.select(
         'keyword',
         predictions_df.predictions[0].alias('informational'),
@@ -101,6 +120,7 @@ def main():
         predictions_df.predictions[2].alias('transactional'),
     ).repartition(32)
 
+    # Save predictions to cassandra
     (predictions_df_final
      .write
      .format('org.apache.spark.sql.cassandra')
