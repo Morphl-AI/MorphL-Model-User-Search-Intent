@@ -41,6 +41,24 @@ ingestion_operator = BashOperator(
     bash_command=run_ingestion_cmd,
     dag=dag)
 
+# Do not remove the extra space at the end (the one after 'run_preprocessing.sh')
+run_preprocessing = [
+    'docker run --rm',
+    '-v /opt/secrets:/opt/secrets:ro',
+    '-v /opt/usi_csv:/opt/usi_csv:ro',
+    '-e MORPHL_SERVER_IP_ADDRESS',
+    '-e MORPHL_CASSANDRA_USERNAME',
+    '-e MORPHL_CASSANDRA_KEYSPACE',
+    '-e MORPHL_CASSANDRA_PASSWORD',
+    'pysparkcontainer',
+    'bash /opt/usi_csv/prediction/batch_inference/run_preprocessing.sh ']
+run_preprocessing_cmd = ' '.join(run_preprocessing)
+
+preprocessing_operator = BashOperator(
+    task_id='run_preprocessing',
+    bash_command=run_preprocessing_cmd,
+    dag=dag)
+
 # Do not remove the extra space at the end (the one after 'run_batch_inference.sh')
 run_batch_inference = [
     'MODELS_DIR=/opt/models',
@@ -62,4 +80,4 @@ batch_inference_operator = BashOperator(
     bash_command=run_batch_inference_cmd,
     dag=dag)
 
-truncate_tables_operator >> ingestion_operator >> batch_inference_operator
+truncate_tables_operator >> ingestion_operator >> preprocessing_operator >> batch_inference_operator
