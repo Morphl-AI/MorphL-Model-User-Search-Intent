@@ -109,7 +109,10 @@ def main():
 
     # Apply UDF to embeddings dataframe
     predictions_df = embeddings_df.select(
-        'keyword', predict_udf("embeddings").alias("predictions"))
+        'csv_file_date',
+        'keyword',
+        predict_udf("embeddings").alias("predictions")
+    )
 
     # Split predictions array based on category
     predictions_df_final = predictions_df.select(
