@@ -2,25 +2,79 @@ import datetime
 from os import getenv
 from pyspark.sql import functions as f, SparkSession
 import torchtext.vocab as vocab
-import torch.tensor as tensor
+import torch as tr
 from pyspark.sql.types import ArrayType
 from pyspark.sql.types import FloatType
+from keras.models import load_model, model_from_json
+import keras.backend as K
+import numpy as np
 
 
-# Load env varibales
+# Get env variables
 MASTER_URL = 'local[*]'
 APPLICATION_NAME = 'preprocessor'
 MORPHL_SERVER_IP_ADDRESS = getenv('MORPHL_SERVER_IP_ADDRESS')
 MORPHL_CASSANDRA_USERNAME = getenv('MORPHL_CASSANDRA_USERNAME')
 MORPHL_CASSANDRA_PASSWORD = getenv('MORPHL_CASSANDRA_PASSWORD')
 MORPHL_CASSANDRA_KEYSPACE = getenv('MORPHL_CASSANDRA_KEYSPACE')
+MODELS_DIR = getenv('MODELS_DIR')
 
-# Load word embeddings tensor
-embedding = vocab.GloVe(name="6B", dim=100)
+# Get model path
+model_file = f'{MODELS_DIR}/usi_csv_en_model.h5'
 
-# Function that returns a dataframe from a cassandra table
+# Custom accuracy function for the prediction model,
+# only needed for training, but the model won't load without it
 
 
+def model_accuracy(y_true, y_pred):
+    std = K.std(y_true, axis=1)
+    where1Class = K.cast(K.abs(std - 0.4714) < 0.01, "float32")
+    where2Class = K.cast(K.abs(std - 0.2357) < 0.01, "float32")
+    where3Class = K.cast(K.abs(std) < 0.01, "float32")
+    thresholds = where1Class * \
+        K.constant(0.5) + where2Class * K.constant(0.25) + \
+        where3Class * K.constant(0.16)
+    thresholds = K.expand_dims(thresholds, axis=-1)
+
+    y_pred = K.cast(y_pred > thresholds, "int32")
+    y_true = K.cast(y_true > 0, "int32")
+    res = y_pred + y_true
+    res = K.cast(K.equal(res, 2 * K.ones_like(res)), "int32")
+
+    res = K.cast(K.sum(res, axis=1) > 0, "float32")
+    res = K.mean(res)
+
+    return res
+
+
+# Load model with keras, using the custom accuracy function and model file path
+model = load_model(model_file, custom_objects={'kerasAcc': model_accuracy})
+
+# Get model json string
+model_json_string = model.to_json()
+# Get model weights
+model_weights = model.get_weights()
+
+# Load model from json string and set weights so that it can be
+# serialized correctly when being called inside the UDF
+model = model_from_json(model_json_string)
+model.set_weights(model_weights)
+
+
+# Define UDF function that predicts users intent using the model,
+# based on word embeddings vector
+def predict_intent(embeddings):
+    # Transform embeddings lists to tensor then numpy array and get predictions as list
+    return model.predict(tr.tensor([embeddings]).numpy()).tolist()[0]
+
+# Define aggregation function that checks the given condition
+
+
+def count_prediction(condition): return f.sum(
+    f.when(condition, 1).otherwise(0))
+
+
+# Cassandra read connector function
 def fetch_from_cassandra(c_table_name, spark_session):
     load_options = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
@@ -30,22 +84,7 @@ def fetch_from_cassandra(c_table_name, spark_session):
     df = (spark_session.read.format('org.apache.spark.sql.cassandra')
                             .options(**load_options)
                             .load())
-
     return df
-
-
-# Function that fetches word embedding from embeddings tensor , will be used as udf later
-def process_keyword(keywords):
-    result = []
-
-    try:
-        for keyword in keywords:
-            index = embedding.stoi[keyword]
-            result.append(embedding.vectors[index].tolist())
-    except Exception as e:
-        return
-
-    return result
 
 
 def main():
@@ -61,63 +100,87 @@ def main():
         .config('parquet.enable.summary-metadata', 'true')
         .getOrCreate())
 
-    # Save options for embeddings table
-    save_options_usi_csv_word_embeddings = {
-        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
-        'table': 'usi_csv_word_embeddings'}
+    # Get word embeddings from from cassandra
+    embeddings_df = (fetch_from_cassandra(
+        'usi_csv_word_embeddings', spark_session))
 
-    # Save options for the csv_files table
-    save_options_usi_csv_files = {
+    # Register prediction UDF
+    predict_udf = f.udf(predict_intent, ArrayType(FloatType()))
+
+    # Apply UDF to embeddings dataframe
+    predictions_df = embeddings_df.select(
+        'csv_file_date', 'keyword', predict_udf("embeddings").alias("predictions"))
+
+    # Split predictions array based on category and save to cassandra
+    predictions_by_csv_df = predictions_df.select(
+        'csv_file_date',
+        'keyword',
+        predictions_df.predictions[0].alias('informational'),
+        predictions_df.predictions[1].alias('navigational'),
+        predictions_df.predictions[2].alias('transactional'),
+    ).repartition(32)
+
+    predictions_by_csv_df.cache()
+
+    predictions_by_csv_df.createOrReplaceTempView('predictions_by_csv')
+
+    save_options_usi_predictions_by_csv = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
-        'table': 'usi_csv_files'
+        'table': 'usi_csv_predictions_by_csv'
     }
 
-    # Register process_keyword as a udf that returns an array of arrays filled with floats
-    processor_udf = f.udf(process_keyword, ArrayType(ArrayType(FloatType())))
+    (predictions_by_csv_df
+     .write
+     .format('org.apache.spark.sql.cassandra')
+     .mode('append')
+     .options(**save_options_usi_predictions_by_csv)
+     .save()
+     )
 
-    # Fetch a dataframe from the usi_csv_files table and filter for unprocessed files
-    usi_csv_files_df = (fetch_from_cassandra('usi_csv_files', spark_session)
-                        .filter('always_zero = 0 AND is_processed = False'))
+    # Save predictions without date to cassandra
+    predictions_simple_df = predictions_by_csv_df.drop(
+        'csv_file_date').repartition(32)
 
-    # Iterate through the csv_files dataframe one by one, this should not be a problem since
-    # the number of csv files will rarely get higher than the 1000s
-    for csv_file in usi_csv_files_df.collect():
-        print('Processing ', csv_file['day_of_data_capture'])
+    predictions_simple_df.cache()
 
-        # Fetch a dataframe from the usi_csv_raw_p table,
-        # add a new column with an array of sanitzedkeywords extracted
-        # from the string from the 'keyword' column
-        # and filter them by the current csv_file date
-        usi_csv_features_raw_p_df = (
-            fetch_from_cassandra('usi_csv_features_raw_p', spark_session)
-            .withColumn('clean_keywords', f.split(f.lower(f.regexp_replace('keyword', '\\+', '')), ' '))
-            .filter("csv_file_date == '{}'".format(csv_file['day_of_data_capture'])))
+    predictions_simple_df.createOrReplaceTempView('predictions')
 
-        # Create a new dataframe with the csv_file_date and keyword columns
-        # and apply an udf to the "clean_keywords" column to get their embeddings
-        # then drop all the cases where null was saved because the embeddings vector
-        # did not contain a word
-        usi_csv_word_embeddings = (usi_csv_features_raw_p_df
-                                   .select(
-                                       'csv_file_date',
-                                       'keyword',
-                                       processor_udf("clean_keywords").alias("embeddings"))
-                                   .na.drop(subset=["embeddings"])
-                                   .repartition(32))
+    save_options_usi_predictions = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions'
+    }
 
-        # Write the new dataframe to the embeddings table
-        (usi_csv_word_embeddings
-         .write
-         .format('org.apache.spark.sql.cassandra')
-         .mode('append')
-         .options(**save_options_usi_csv_word_embeddings)
-         .save())
+    (predictions_simple_df
+     .write
+     .format('org.apache.spark.sql.cassandra')
+     .mode('append')
+     .options(**save_options_usi_predictions)
+     .save()
+     )
 
-    # Mark all the processed csv files as such in the database
-    (usi_csv_files_df
-        .withColumn('is_processed', f.lit(True))
-        .write
-        .format('org.apache.spark.sql.cassandra')
-        .mode('append')
-        .options(**save_options_usi_csv_files)
-        .save())
+    # Calculate predictions statistics and save to casssandra
+    predictions_statistics_df = predictions_by_csv_df.groupBy('csv_file_date').agg(
+        count_prediction(f.col('informational') >
+                         0.5).alias('informational'),
+        count_prediction(f.col('transactional') >
+                         0.5).alias('transactional'),
+        count_prediction(f.col('navigational') >
+                         0.5).alias('navigational')
+    ).repartition(32)
+
+    predictions_statistics_df.cache()
+
+    predictions_statistics_df.createOrReplaceTempView('predictions_statistics')
+
+    save_options_usi_predictions_statistics = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions_statistics'
+    }
+
+    (predictions_statistics_df
+     .write
+     .format('org.apache.spark.sql.cassandra')
+     .mode('append')
+     .options(**save_options_usi_predictions_statistics)
+     .save()
+     )
