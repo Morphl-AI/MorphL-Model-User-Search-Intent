@@ -101,6 +101,12 @@ def main():
         'table': 'usi_csv_predictions'
     }
 
+    # Predictions by csv save configuration
+    save_options_usi_predictions_by_csv = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions_by_csv'
+    }
+
     # Get word embeddings from from cassandra
     embeddings_df = (fetch_from_cassandra(
         'usi_csv_word_embeddings', spark_session))
@@ -114,14 +120,25 @@ def main():
 
     # Split predictions array based on category
     predictions_df_final = predictions_df.select(
+        'csv_file_date',
         'keyword',
         predictions_df.predictions[0].alias('informational'),
         predictions_df.predictions[1].alias('navigational'),
         predictions_df.predictions[2].alias('transactional'),
     ).repartition(32)
 
+    # Save predictions by csv
+    (predictions_df_final
+     .write
+     .format('org.apache.spark.sql.cassandra')
+     .mode('append')
+     .options(**save_options_usi_predictions_by_csv)
+     .save()
+     )
+
     # Save predictions to cassandra
     (predictions_df_final
+     .drop('csv_file_date')
      .write
      .format('org.apache.spark.sql.cassandra')
      .mode('append')
