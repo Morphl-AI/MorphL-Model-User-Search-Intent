@@ -121,3 +121,7 @@ def main():
         .mode('append')
         .options(**save_options_usi_csv_files)
         .save())
+
+
+if __name__ == '__main__':
+    main()

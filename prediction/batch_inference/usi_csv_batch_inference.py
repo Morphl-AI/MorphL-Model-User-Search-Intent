@@ -184,3 +184,7 @@ def main():
      .options(**save_options_usi_predictions_statistics)
      .save()
      )
+
+
+if __name__ == '__main__':
+    main()
