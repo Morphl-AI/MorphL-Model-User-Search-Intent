@@ -51,7 +51,7 @@ run_preprocessing = [
     '-e MORPHL_CASSANDRA_KEYSPACE',
     '-e MORPHL_CASSANDRA_PASSWORD',
     'pysparkcontainer',
-    'bash /opt/usi_csv/prediction/batch_inference/run_preprocessing.sh ']
+    'bash /opt/usi_csv/preprocessing/run_preprocessing.sh ']
 run_preprocessing_cmd = ' '.join(run_preprocessing)
 
 preprocessing_operator = BashOperator(
