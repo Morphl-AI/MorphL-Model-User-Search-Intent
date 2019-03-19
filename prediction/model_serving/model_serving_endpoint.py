@@ -71,7 +71,7 @@ class Cassandra:
 
         # Find predictions statistics (counters)
         self.prep_stmts['statistics']['count'] = self.session.prepare(
-            'SELECT informational, navigational, transactional FROM usi_csv_predictions_statistics WHERE always_zero = 0')
+            'SELECT informational, navigational, transactional FROM usi_csv_predictions_statistics WHERE csv_file_date = ?')
 
     def retrieve_csvs(self):
         return self.session.execute(self.prep_stmts['csvs']['multiple'], timeout=self.CASS_REQ_TIMEOUT)._current_rows
@@ -106,8 +106,8 @@ class Cassandra:
         bind_list = [csv_file_date, keyword]
         return self.session.execute(self.prep_stmts['predictions']['multiple_by_csv_keyword'], bind_list, timeout=self.CASS_REQ_TIMEOUT)._current_rows
 
-    def retrieve_statistics(self):
-        return self.session.execute(self.prep_stmts['statistics']['count'], timeout=self.CASS_REQ_TIMEOUT)._current_rows
+    def retrieve_statistics(self, csv_file_date):
+        return self.session.execute(self.prep_stmts['statistics']['count'], [csv_file_date], timeout=self.CASS_REQ_TIMEOUT)._current_rows
 
 
 """
@@ -253,13 +253,19 @@ def get_predictions_by_csv(csv_file_date, keyword):
 # Find prediction statistics (counter)
 
 
-@app.route('/search-intent/statistics', methods=['GET'])
-def get_statistics():
+@app.route('/search-intent/<csv_file_date>/statistics', methods=['GET'])
+def get_statistics(csv_file_date):
     # Validate authorization header with JWT
     if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
         return jsonify(status=0, error='Unauthorized request.'), 401
 
-    s = app.config['CASSANDRA'].retrieve_statistics()
+    # Validate date
+    try:
+        csv_file_date = datetime.strptime(csv_file_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify(status=0, error='Invalid date format.'), 401
+
+    s = app.config['CASSANDRA'].retrieve_statistics(csv_file_date)
 
     if len(s) == 0:
         return jsonify(status=0, error='No associated statistics found.')
