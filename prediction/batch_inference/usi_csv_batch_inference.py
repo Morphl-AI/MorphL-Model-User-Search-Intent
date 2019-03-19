@@ -109,13 +109,10 @@ def main():
 
     # Apply UDF to embeddings dataframe
     predictions_df = embeddings_df.select(
-        'csv_file_date',
-        'keyword',
-        predict_udf("embeddings").alias("predictions")
-    )
+        'csv_file_date', 'keyword', predict_udf("embeddings").alias("predictions"))
 
-    # Split predictions array based on category
-    predictions_df_final = predictions_df.select(
+    # Split predictions array based on category and save to cassandra
+    predictions_by_csv_df = predictions_df.select(
         'csv_file_date',
         'keyword',
         predictions_df.predictions[0].alias('informational'),
@@ -123,8 +120,46 @@ def main():
         predictions_df.predictions[2].alias('transactional'),
     ).repartition(32)
 
-    # Calculate predictions statistics
-    predictions_statistics_df = predictions_df_final.groupBy('csv_file_date').agg(
+    predictions_by_csv_df.cache()
+
+    predictions_by_csv_df.createOrReplaceTempView('predictions_by_csv')
+
+    save_options_usi_predictions_by_csv = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions_by_csv'
+    }
+
+    (predictions_by_csv_df
+     .write
+     .format('org.apache.spark.sql.cassandra')
+     .mode('append')
+     .options(**save_options_usi_predictions_by_csv)
+     .save()
+     )
+
+    # Save predictions without date to cassandra
+    predictions_by_keyword_df = predictions_by_csv_df.drop(
+        'csv_file_date').repartition(32)
+
+    predictions_by_keyword_df.cache()
+
+    predictions_by_keyword_df.createOrReplaceTempView('predictions')
+
+    save_options_usi_predictions = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_predictions'
+    }
+
+    (predictions_by_keyword_df
+     .write
+     .format('org.apache.spark.sql.cassandra')
+     .mode('append')
+     .options(**save_options_usi_predictions)
+     .save()
+     )
+
+    # Calculate predictions statistics and save to casssandra
+    predictions_statistics_df = predictions_by_csv_df.groupBy('csv_file_date').agg(
         count_prediction(f.col('informational') >
                          0.5).alias('informational'),
         count_prediction(f.col('transactional') >
@@ -133,44 +168,15 @@ def main():
                          0.5).alias('navigational')
     ).repartition(32)
 
-    # Predictions save configuration
-    save_options_usi_predictions = {
-        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
-        'table': 'usi_csv_predictions'
-    }
+    predictions_statistics_df.cache()
 
-    # Predictions by csv save configuration
-    save_options_usi_predictions_by_csv = {
-        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
-        'table': 'usi_csv_predictions_by_csv'
-    }
+    predictions_statistics_df.createOrReplaceTempView('predictions_statistics')
 
-    # Predictions statistics save configuration
     save_options_usi_predictions_statistics = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
         'table': 'usi_csv_predictions_statistics'
     }
 
-    # Save predictions by csv
-    (predictions_df_final
-     .write
-     .format('org.apache.spark.sql.cassandra')
-     .mode('append')
-     .options(**save_options_usi_predictions_by_csv)
-     .save()
-     )
-
-    # Save predictions to cassandra
-    (predictions_df_final
-     .drop('csv_file_date')
-     .write
-     .format('org.apache.spark.sql.cassandra')
-     .mode('append')
-     .options(**save_options_usi_predictions)
-     .save()
-     )
-
-    # Save predictions statistics
     (predictions_statistics_df
      .write
      .format('org.apache.spark.sql.cassandra')
