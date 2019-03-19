@@ -69,9 +69,14 @@ class Cassandra:
         self.prep_stmts['predictions']['multiple_by_csv_keyword'] = self.session.prepare(
             'SELECT keyword, informational, navigational, transactional FROM usi_csv_predictions_by_csv WHERE csv_file_date = ? AND keyword = ?')
 
-        # Find predictions statistics (counters)
-        self.prep_stmts['statistics']['count'] = self.session.prepare(
+        # Find predictions statistics  by csv file (date)
+        self.prep_stmts['statistics']['csv_count'] = self.session.prepare(
             'SELECT informational, navigational, transactional FROM usi_csv_predictions_statistics WHERE csv_file_date = ?')
+
+        # Find predictions statistics for all csvs
+        self.prep_stmts['statistics']['overview_count'] = self.session.prepare(
+            'SELECT sum(informational) as informational, sum(navigational) as navigational, sum(transactional) as transactional FROM usi_csv_predictions_statistics'
+        )
 
     def retrieve_csvs(self):
         return self.session.execute(self.prep_stmts['csvs']['multiple'], timeout=self.CASS_REQ_TIMEOUT)._current_rows
@@ -106,8 +111,11 @@ class Cassandra:
         bind_list = [csv_file_date, keyword]
         return self.session.execute(self.prep_stmts['predictions']['multiple_by_csv_keyword'], bind_list, timeout=self.CASS_REQ_TIMEOUT)._current_rows
 
-    def retrieve_statistics(self, csv_file_date):
-        return self.session.execute(self.prep_stmts['statistics']['count'], [csv_file_date], timeout=self.CASS_REQ_TIMEOUT)._current_rows
+    def retrieve_csv_statistics(self, csv_file_date):
+        return self.session.execute(self.prep_stmts['statistics']['csv_count'], [csv_file_date], timeout=self.CASS_REQ_TIMEOUT)._current_rows
+
+    def retrieve_overview_statistics(self):
+        return self.session.execute(self.prep_stmts['statistics']['overview_count'], timeout=self.CASS_REQ_TIMEOUT)._current_rows
 
 
 """
@@ -250,11 +258,9 @@ def get_predictions_by_csv(csv_file_date, keyword):
         next_paging_state=results['next_paging_state']
     )
 
-# Find prediction statistics (counter)
-
-
+# Find prediction statistics by csv file (date)
 @app.route('/search-intent/<csv_file_date>/statistics', methods=['GET'])
-def get_statistics(csv_file_date):
+def get_csv_statistics(csv_file_date):
     # Validate authorization header with JWT
     if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
         return jsonify(status=0, error='Unauthorized request.'), 401
@@ -265,7 +271,26 @@ def get_statistics(csv_file_date):
     except ValueError:
         return jsonify(status=0, error='Invalid date format.'), 401
 
-    s = app.config['CASSANDRA'].retrieve_statistics(csv_file_date)
+    s = app.config['CASSANDRA'].retrieve_csv_statistics(csv_file_date)
+
+    if len(s) == 0:
+        return jsonify(status=0, error='No associated statistics found.')
+
+    return jsonify(
+        status=1,
+        informational=int(s[0]['informational'] or 0),
+        navigational=int(s[0]['navigational'] or 0),
+        transactional=int(s[0]['transactional'] or 0),
+    )
+
+# Find predictions statistics for all csv files
+@app.route('/search-intent/statistics', methods=['GET'])
+def get_overview_statistics():
+    # Validate authorization header with JWT
+    if request.headers.get('Authorization') is None or not app.config['API'].verify_jwt(request.headers['Authorization']):
+        return jsonify(status=0, error='Unauthorized request.'), 401
+
+    s = app.config['CASSANDRA'].retrieve_overview_statistics()
 
     if len(s) == 0:
         return jsonify(status=0, error='No associated statistics found.')
