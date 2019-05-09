@@ -1,54 +1,117 @@
-import os
+from os import getenv, path, listdir
 
-from csv_processor import CsvProcessor
-from gs_manager import GoogleStorageManager
-from keywords_repo import KeywordsByCSVRepo
-from csv_files_repo import CSVFilesRepo
-from session_manager import CassandraSessionManager
+import gcsfs
+from pyspark.sql import functions as f, SparkSession
+from pyspark.sql.types import DateType
+from cassandra.cluster import Cluster
+from cassandra.auth import PlainTextAuthProvider
 
 
-class DataIngestion:
+MORPHL_CASSANDRA_USERNAME = getenv('MORPHL_CASSANDRA_USERNAME')
+MORPHL_CASSANDRA_PASSWORD = getenv('MORPHL_CASSANDRA_PASSWORD')
+MORPHL_SERVER_IP_ADDRESS = getenv('MORPHL_SERVER_IP_ADDRESS')
+MORPHL_CASSANDRA_KEYSPACE = getenv('MORPHL_CASSANDRA_KEYSPACE')
+CASS_REQ_TIMEOUT = getenv('CASS_REQ_TIMEOUT')
 
-    def __init__(self):
-        self.session_manager = CassandraSessionManager()
-        self.keywords_repo = KeywordsByCSVRepo(self.session_manager.session)
-        self.csv_files_repo = CSVFilesRepo(self.session_manager.session)
-        self.storage_manager = GoogleStorageManager()
-        self.csv_processor = CsvProcessor()
+USI_GOOGLE_CLOUD_PROJECT = getenv('USI_GOOGLE_CLOUD_PROJECT')
+USI_GOOGLE_CLOUD_BUCKET = getenv('USI_GOOGLE_CLOUD_BUCKET')
+USI_GOOGLE_CLOUD_PROCESSED = getenv('USI_GOOGLE_CLOUD_PROCESSED')
+USI_GOOGLE_CLOUD_UNPROCESSED = getenv(
+    'USI_GOOGLE_CLOUD_UNPROCESSED')
+USI_GOOGLE_CLOUD_SERVICE_ACCOUNT = getenv(
+    'USI_GOOGLE_CLOUD_SERVICE_ACCOUNT')
 
-    def get_csv_date(self, csv_path):
-        filename_without_extension = os.path.splitext(
-            os.path.basename(csv_path))[0]
-        return self.csv_processor.format_date(filename_without_extension)
 
-    def file_processor(self, csv_date):
-        self.csv_files_repo.insert([csv_date])
+MASTER_URL = 'local[*]'
+APPLICATION_NAME = 'ingest_csv'
+USI_LOCAL_PATH = '/opt/landing/'
 
-    def run(self):
-        for csv_path in self.storage_manager.get_unprocessed_filenames():
-            print('Ingesting ' + csv_path + "...")
 
-            df = self.storage_manager.get_df(csv_path)
-            csv_date = self.get_csv_date(csv_path)
+def insert_csv(values):
 
-            self.file_processor(csv_date)
+    auth_provider = PlainTextAuthProvider(
+        username=MORPHL_CASSANDRA_USERNAME,
+        password=MORPHL_CASSANDRA_PASSWORD
+    )
 
-            df['token'] = df.apply(
-                self.csv_processor.process_df, csv_date=csv_date, meta=('token', int), axis=1)
+    cluster = Cluster(
+        [MORPHL_SERVER_IP_ADDRESS], auth_provider=auth_provider)
 
-            df.token.compute()
+    spark_session_cass = cluster.connect(MORPHL_CASSANDRA_KEYSPACE)
 
-            self.storage_manager.move_to_processed(csv_path)
+    prep_stmt_predictions_statistics = spark_session_cass.prepare(
+        'INSERT INTO usi_csv_files (always_zero, day_of_data_capture, is_processed) VALUES (0, ?, false)'
+    )
 
-            print('Done with ' + csv_path)
+    spark_session_cass.execute(
+        prep_stmt_predictions_statistics, values, timeout=CASS_REQ_TIMEOUT)
 
-        self.session_manager.cluster.shutdown()
+
+def format_date(date_str):
+    return "{}-{}-{}".format(date_str[:4], date_str[4:6], date_str[6:8])
+
+
+def get_csv_date(csv_path):
+    filename_without_extension = path.splitext(path.basename(csv_path))[0]
+    return format_date(filename_without_extension)
 
 
 def main():
-    data_ingestion = DataIngestion()
-    data_ingestion.run()
+    spark_session = (
+        SparkSession.builder
+        .appName(APPLICATION_NAME)
+        .master(MASTER_URL)
+        .config('spark.cassandra.connection.host', MORPHL_SERVER_IP_ADDRESS)
+        .config('spark.cassandra.auth.username', MORPHL_CASSANDRA_USERNAME)
+        .config('spark.cassandra.auth.password', MORPHL_CASSANDRA_PASSWORD)
+        .config('spark.sql.shuffle.partitions', 16)
+        .getOrCreate())
 
+    log4j = spark_session.sparkContext._jvm.org.apache.log4j
+    log4j.LogManager.getRootLogger().setLevel(log4j.Level.ERROR)
 
-if __name__ == '__main__':
-    main()
+    save_options_usi_csv_features_raw_p_df = {
+        'keyspace': MORPHL_CASSANDRA_KEYSPACE,
+        'table': 'usi_csv_features_raw_p'
+    }
+
+    fs = gcsfs.GCSFileSystem(
+        project=USI_GOOGLE_CLOUD_PROJECT, token=USI_GOOGLE_CLOUD_SERVICE_ACCOUNT)
+
+    csv_files_local = listdir(USI_LOCAL_PATH)
+
+    format_date_udf = f.udf(format_date, DateType())
+
+    for csv_file in csv_files_local:
+        print('Ingesting ' + csv_file + "...")
+
+        df = spark_session.read.csv(USI_LOCAL_PATH + csv_file)
+
+        csv_date = get_csv_date(csv_file)
+
+        insert_csv([csv_date])
+
+        (df
+         .withColumn('csv_file_date', f.lit(csv_date))
+         .withColumnRenamed('ID_GRUPO', 'group_id')
+         .withColumnRenamed('ID_KEYWORD', 'keyword_id')
+         .withColumn('FECHA', format_date_udf('FECHA')).alias('timestamp')
+         .withColumnRenamed('IMPRESSIONS', 'impressions')
+         .withColumnRenamed('CLICKS', 'clicks')
+         .withColumnRenamed('KEYWORD', 'keyword')
+         .write
+         .format('org.apache.spark.sql.cassandra')
+         .mode('append')
+         .options(**save_options_usi_csv_features_raw_p_df)
+         .save()
+         )
+
+        path_from = USI_GOOGLE_CLOUD_BUCKET + '/' + \
+            USI_GOOGLE_CLOUD_UNPROCESSED + '/' + csv_file
+        path_to = USI_GOOGLE_CLOUD_BUCKET + '/' + \
+            USI_GOOGLE_CLOUD_PROCESSED + "/" + \
+            csv_file
+
+        fs.mv(path_from, path_to)
+
+        print('Done with ' + csv_file)
