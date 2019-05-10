@@ -85,7 +85,8 @@ def main():
     for csv_file in csv_files_local:
         print('Ingesting ' + csv_file + "...")
 
-        df = spark_session.read.csv(USI_LOCAL_PATH + csv_file)
+        df = spark_session.read.csv(
+            USI_LOCAL_PATH + csv_file, sep="\t", header=True)
 
         csv_date = get_csv_date(csv_file)
 
