@@ -32,7 +32,7 @@ run_ingestion = [
     '-e USI_GOOGLE_CLOUD_PROCESSED',
     '-e USI_GOOGLE_CLOUD_UNPROCESSED',
     '-e USI_GOOGLE_CLOUD_SERVICE_ACCOUNT',
-    'pythoncontainer',
+    'pysparkcontainer',
     'bash /opt/usi_csv/ingestion/run_ingestion.sh ']
 run_ingestion_cmd = ' '.join(run_ingestion)
 
