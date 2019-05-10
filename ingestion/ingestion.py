@@ -126,3 +126,7 @@ def main():
         fs.mv(path_from, path_to)
 
         print('Done with ' + csv_file)
+
+
+if __name__ == '__main__':
+    main()
