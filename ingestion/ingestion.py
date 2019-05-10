@@ -2,7 +2,7 @@ from os import getenv, path, listdir
 
 import gcsfs
 from pyspark.sql import functions as f, SparkSession
-from pyspark.sql.types import DateType
+from pyspark.sql.types import StringType
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
 
@@ -26,6 +26,13 @@ MASTER_URL = 'local[*]'
 APPLICATION_NAME = 'ingest_csv'
 USI_LOCAL_PATH = '/opt/landing/'
 
+USI_CSV_GROUP_ID = "ID_GRUPO"
+USI_CSV_KEYWORD_ID = "ID_KEYWORD"
+USI_CSV_TIMESTAMP = "FECHA"
+USI_CSV_IMPRESSIONS = "IMPRESSIONS"
+USI_CSV_CLICKS = "CLICKS"
+USI_CSV_KEYWORD = "KEYWORD"
+
 
 def insert_csv(values):
 
@@ -45,6 +52,8 @@ def insert_csv(values):
 
     spark_session_cass.execute(
         prep_stmt_predictions_statistics, values, timeout=CASS_REQ_TIMEOUT)
+
+    cluster.shutdown()
 
 
 def format_date(date_str):
@@ -80,7 +89,7 @@ def main():
 
     csv_files_local = listdir(USI_LOCAL_PATH)
 
-    format_date_udf = f.udf(format_date, DateType())
+    format_date_udf = f.udf(format_date, StringType())
 
     for csv_file in csv_files_local:
         print('Ingesting ' + csv_file + "...")
@@ -94,12 +103,13 @@ def main():
 
         (df
          .withColumn('csv_file_date', f.lit(csv_date))
-         .withColumnRenamed('ID_GRUPO', 'group_id')
-         .withColumnRenamed('ID_KEYWORD', 'keyword_id')
-         .withColumn('FECHA', format_date_udf('FECHA')).alias('timestamp')
-         .withColumnRenamed('IMPRESSIONS', 'impressions')
-         .withColumnRenamed('CLICKS', 'clicks')
-         .withColumnRenamed('KEYWORD', 'keyword')
+         .withColumn('timestamp', format_date_udf(USI_CSV_TIMESTAMP))
+         .drop(USI_CSV_TIMESTAMP)
+         .withColumnRenamed(USI_CSV_GROUP_ID, 'group_id')
+         .withColumnRenamed(USI_CSV_KEYWORD_ID, 'keyword_id')
+         .withColumnRenamed(USI_CSV_IMPRESSIONS, 'impressions')
+         .withColumnRenamed(USI_CSV_CLICKS, 'clicks')
+         .withColumnRenamed(USI_CSV_KEYWORD, 'keyword')
          .write
          .format('org.apache.spark.sql.cassandra')
          .mode('append')
