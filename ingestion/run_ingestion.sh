@@ -12,7 +12,7 @@ gcloud auth activate-service-account --key-file=${USI_GOOGLE_CLOUD_SERVICE_ACCOU
 
 mkdir ${USI_LOCAL_PATH}
 
-gsutil cp -r dir gs://${USI_GOOGLE_CLOUD_BUCKET}/${USI_GOOGLE_CLOUD_UNPROCESSED} ${USI_LOCAL_PATH}
+gsutil cp gs://${USI_GOOGLE_CLOUD_BUCKET}/${USI_GOOGLE_CLOUD_UNPROCESSED}/* ${USI_LOCAL_PATH}
 
 export USI_LOCAL_PATH
 
