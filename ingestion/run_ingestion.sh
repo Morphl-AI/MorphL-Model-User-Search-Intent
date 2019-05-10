@@ -18,5 +18,5 @@ export USI_LOCAL_PATH
 
 spark-submit --jars /opt/spark/jars/spark-cassandra-connector.jar,/opt/spark/jars/jsr166e.jar  /opt/code/ingestion/ingestion.py
 
-rm r- ${USI_LOCAL_PATH}
+rm -r ${USI_LOCAL_PATH}
 
