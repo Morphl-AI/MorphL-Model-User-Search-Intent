@@ -9,11 +9,6 @@ CREATE TABLE morphl.usi_csv_files (
 
 CREATE TABLE morphl.usi_csv_features_raw_p (
   csv_file_date date,
-  group_id text,
-  keyword_id text,
-  timestamp date,
-  impressions int,
-  clicks int,
   keyword text,
   PRIMARY KEY ((csv_file_date), keyword)
 );
