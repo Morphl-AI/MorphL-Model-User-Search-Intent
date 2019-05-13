@@ -120,10 +120,6 @@ def main():
         predictions_df.predictions[2].alias('transactional'),
     ).repartition(32)
 
-    predictions_by_csv_df.cache()
-
-    predictions_by_csv_df.createOrReplaceTempView('predictions_by_csv')
-
     save_options_usi_predictions_by_csv = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
         'table': 'usi_csv_predictions_by_csv'
@@ -139,11 +135,7 @@ def main():
 
     # Save predictions without date to cassandra
     predictions_by_keyword_df = predictions_by_csv_df.drop(
-        'csv_file_date').repartition(32)
-
-    predictions_by_keyword_df.cache()
-
-    predictions_by_keyword_df.createOrReplaceTempView('predictions')
+        'csv_file_date')
 
     save_options_usi_predictions = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
@@ -167,10 +159,6 @@ def main():
         count_prediction(f.col('navigational') >
                          0.5).alias('navigational')
     ).repartition(32)
-
-    predictions_statistics_df.cache()
-
-    predictions_statistics_df.createOrReplaceTempView('predictions_statistics')
 
     save_options_usi_predictions_statistics = {
         'keyspace': MORPHL_CASSANDRA_KEYSPACE,
