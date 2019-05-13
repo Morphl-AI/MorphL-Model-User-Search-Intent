@@ -91,7 +91,9 @@ def main():
         usi_csv_features_raw_p_df = (
             fetch_from_cassandra('usi_csv_features_raw_p', spark_session)
             .withColumn('clean_keywords', f.split(f.lower(f.regexp_replace('keyword', '\\+', '')), ' '))
-            .filter("csv_file_date == '{}'".format(csv_file['day_of_data_capture'])))
+            .filter("csv_file_date == '{}'".format(csv_file['day_of_data_capture']))
+            .repartition(32)
+        )
 
         # Create a new dataframe with the csv_file_date and keyword columns
         # and apply an udf to the "clean_keywords" column to get their embeddings
