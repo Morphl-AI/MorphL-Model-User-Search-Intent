@@ -9,8 +9,8 @@ CREATE TABLE morphl.usi_csv_files (
 
 CREATE TABLE morphl.usi_csv_features_raw_p (
   csv_file_date date,
-  group_id varchar,
-  keyword_id varchar,
+  group_id text,
+  keyword_id text,
   timestamp date,
   impressions int,
   clicks int,
