@@ -34,28 +34,6 @@ USI_CSV_CLICKS = "CLICKS"
 USI_CSV_KEYWORD = "KEYWORD"
 
 
-def insert_csv(values):
-
-    auth_provider = PlainTextAuthProvider(
-        username=MORPHL_CASSANDRA_USERNAME,
-        password=MORPHL_CASSANDRA_PASSWORD
-    )
-
-    cluster = Cluster(
-        [MORPHL_SERVER_IP_ADDRESS], auth_provider=auth_provider)
-
-    spark_session_cass = cluster.connect(MORPHL_CASSANDRA_KEYSPACE)
-
-    prep_stmt_predictions_statistics = spark_session_cass.prepare(
-        'INSERT INTO usi_csv_files (always_zero, day_of_data_capture, is_processed) VALUES (0, ?, false)'
-    )
-
-    spark_session_cass.execute(
-        prep_stmt_predictions_statistics, values, timeout=CASS_REQ_TIMEOUT)
-
-    cluster.shutdown()
-
-
 def format_date(date_str):
     return "{}-{}-{}".format(date_str[:4], date_str[4:6], date_str[6:8])
 
@@ -87,6 +65,20 @@ def main():
     fs = gcsfs.GCSFileSystem(
         project=USI_GOOGLE_CLOUD_PROJECT, token=USI_GOOGLE_CLOUD_SERVICE_ACCOUNT)
 
+    auth_provider = PlainTextAuthProvider(
+        username=MORPHL_CASSANDRA_USERNAME,
+        password=MORPHL_CASSANDRA_PASSWORD
+    )
+
+    cluster = Cluster(
+        [MORPHL_SERVER_IP_ADDRESS], auth_provider=auth_provider)
+
+    spark_session_cass = cluster.connect(MORPHL_CASSANDRA_KEYSPACE)
+
+    prep_stmt_predictions_statistics = spark_session_cass.prepare(
+        'INSERT INTO usi_csv_files (always_zero, day_of_data_capture, is_processed) VALUES (0, ?, false)'
+    )
+
     csv_files_local = listdir(USI_LOCAL_PATH)
 
     format_date_udf = f.udf(format_date, StringType())
@@ -99,7 +91,8 @@ def main():
 
         csv_date = get_csv_date(csv_file)
 
-        insert_csv([csv_date])
+        spark_session_cass.execute(
+            prep_stmt_predictions_statistics, [csv_date], timeout=CASS_REQ_TIMEOUT)
 
         (df
          .withColumn('csv_file_date', f.lit(csv_date))
@@ -126,6 +119,8 @@ def main():
         fs.mv(path_from, path_to)
 
         print('Done with ' + csv_file)
+
+    cluster.shutdown()
 
 
 if __name__ == '__main__':
