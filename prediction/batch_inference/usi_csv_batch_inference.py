@@ -4,7 +4,7 @@ from pyspark.sql import functions as f, SparkSession
 import torchtext.vocab as vocab
 import torch as tr
 from pyspark.sql.types import ArrayType
-from pyspark.sql.types import FloatType
+from pyspark.sql.types import DoubleType
 from keras.models import load_model, model_from_json
 import keras.backend as K
 import numpy as np
@@ -105,7 +105,7 @@ def main():
         'usi_csv_word_embeddings', spark_session))
 
     # Register prediction UDF
-    predict_udf = f.udf(predict_intent, ArrayType(FloatType()))
+    predict_udf = f.udf(predict_intent, ArrayType(DoubleType()))
 
     # Apply UDF to embeddings dataframe
     predictions_df = embeddings_df.select(

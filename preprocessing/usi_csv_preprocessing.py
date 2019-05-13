@@ -4,7 +4,7 @@ from pyspark.sql import functions as f, SparkSession
 import torchtext.vocab as vocab
 import torch.tensor as tensor
 from pyspark.sql.types import ArrayType
-from pyspark.sql.types import FloatType
+from pyspark.sql.types import DoubleType
 
 
 # Load env varibales
@@ -72,8 +72,8 @@ def main():
         'table': 'usi_csv_files'
     }
 
-    # Register process_keyword as a udf that returns an array of arrays filled with floats
-    processor_udf = f.udf(process_keyword, ArrayType(ArrayType(FloatType())))
+    # Register process_keyword as a udf that returns an array of arrays filled with doubles
+    processor_udf = f.udf(process_keyword, ArrayType(ArrayType(DoubleType())))
 
     # Fetch a dataframe from the usi_csv_files table and filter for unprocessed files
     usi_csv_files_df = (fetch_from_cassandra('usi_csv_files', spark_session)
