@@ -21,7 +21,7 @@ CREATE TABLE morphl.usi_csv_features_raw_p (
 CREATE TABLE morphl.usi_csv_word_embeddings (
   csv_file_date date,
   keyword text,
-  embeddings <frozen<list><frozen <list<double>>>>,
+  embeddings frozen<list<frozen<list<double>>>>,
   PRIMARY KEY ((csv_file_date, keyword))
 );
 
