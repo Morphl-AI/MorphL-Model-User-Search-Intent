@@ -16,7 +16,7 @@ MORPHL_CASSANDRA_PASSWORD = getenv('MORPHL_CASSANDRA_PASSWORD')
 MORPHL_CASSANDRA_KEYSPACE = getenv('MORPHL_CASSANDRA_KEYSPACE')
 
 # Load word embeddings tensor
-embedding = vocab.GloVe(name="6B", dim=100)
+embedding = vocab.Vectors(name="/opt/glove/glove.6B.100d.txt",cache='/opt/glove')
 
 # Function that returns a dataframe from a cassandra table
 

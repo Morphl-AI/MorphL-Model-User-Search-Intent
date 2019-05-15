@@ -46,6 +46,7 @@ run_preprocessing = [
     'docker run --rm',
     '-v /opt/secrets:/opt/secrets:ro',
     '-v /opt/usi_csv:/opt/usi_csv:ro',
+    '-v /opt/glove:/opt/glove',
     '-e MORPHL_SERVER_IP_ADDRESS',
     '-e MORPHL_CASSANDRA_USERNAME',
     '-e MORPHL_CASSANDRA_KEYSPACE',

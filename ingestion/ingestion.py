@@ -90,7 +90,6 @@ def main():
         (df
          .withColumn('csv_file_date', f.lit(csv_date))
          .withColumnRenamed(USI_CSV_KEYWORD, 'keyword')
-         .drop('ID_GRUPO', 'ID_KEYWORD', 'FECHA', 'IMPRESSIONS', 'CLICKS')
          .write
          .format('org.apache.spark.sql.cassandra')
          .mode('append')

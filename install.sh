@@ -7,8 +7,8 @@ chown airflow /home/airflow/.morphl_usi_csv_environment.sh
 
 echo "export USI_GOOGLE_CLOUD_PROJECT=morphl-cloud" >> /home/airflow/.morphl_usi_csv_environment.sh
 echo "export USI_GOOGLE_CLOUD_BUCKET=usi-csv-samples" >> /home/airflow/.morphl_usi_csv_environment.sh
-echo "export USI_GOOGLE_CLOUD_PROCESSED=jot/processed" >> /home/airflow/.morphl_usi_csv_environment.sh
-echo "export USI_GOOGLE_CLOUD_UNPROCESSED=jot/unprocessed" >> /home/airflow/.morphl_usi_csv_environment.sh
+echo "export USI_GOOGLE_CLOUD_PROCESSED=processed" >> /home/airflow/.morphl_usi_csv_environment.sh
+echo "export USI_GOOGLE_CLOUD_UNPROCESSED=unprocessed" >> /home/airflow/.morphl_usi_csv_environment.sh
 echo "export USI_GOOGLE_CLOUD_SERVICE_ACCOUNT=/opt/secrets/usi_csv/gcloud_service_account.json" >> /home/airflow/.morphl_usi_csv_environment.sh
 echo ". /home/airflow/.morphl_usi_csv_environment.sh" >> /home/airflow/.profile
 
@@ -17,6 +17,12 @@ touch /opt/secrets/usi_csv/gcloud_service_account.json
 chmod -R 775 /opt/secrets/usi_csv
 chmod 660 /opt/secrets/usi_csv/gcloud_service_account.json
 chgrp airflow /opt/secrets/usi_csv /opt/secrets/usi_csv/gcloud_service_account.json
+
+# Download glove vector to local dir
+mkdir -p /opt/glove
+wget -qO /opt/glove/glove.6B.zip http://downloads.cs.stanford.edu/nlp/data/wordvecs/glove.6B.zip
+unzip -j /opt/glove/glove.6B.zip glove.6B.100d.txt -d /opt/glove
+rm /opt/glove/glove.6B.zip
 
 echo 'Initiating the Cassandra database...'
 echo
