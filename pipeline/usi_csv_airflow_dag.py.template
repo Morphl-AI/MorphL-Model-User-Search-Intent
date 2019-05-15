@@ -11,6 +11,13 @@ dag = DAG(dag_id='usi_csv_pipeline',
           default_args=args,
           schedule_interval='0 12 * * *')
 
+run_truncate_tables_cmd = 'bash /opt/usi_csv/pipeline/usi_csv_truncate_tables_before_ingestion.sh '
+
+truncate_tables_operator = BashOperator(
+    task_id='truncate_tables',
+    bash_command=run_truncate_tables_cmd,
+    dag=dag)
+
 # Do not remove the extra space at the end (the one after 'run_ingestion.sh')
 run_ingestion = [
     'docker run --rm',
@@ -25,13 +32,31 @@ run_ingestion = [
     '-e USI_GOOGLE_CLOUD_PROCESSED',
     '-e USI_GOOGLE_CLOUD_UNPROCESSED',
     '-e USI_GOOGLE_CLOUD_SERVICE_ACCOUNT',
-    'pythoncontainer',
+    'pysparkcontainer',
     'bash /opt/usi_csv/ingestion/run_ingestion.sh ']
 run_ingestion_cmd = ' '.join(run_ingestion)
 
 ingestion_operator = BashOperator(
     task_id='run_ingestion',
     bash_command=run_ingestion_cmd,
+    dag=dag)
+
+# Do not remove the extra space at the end (the one after 'run_preprocessing.sh')
+run_preprocessing = [
+    'docker run --rm',
+    '-v /opt/secrets:/opt/secrets:ro',
+    '-v /opt/usi_csv:/opt/usi_csv:ro',
+    '-e MORPHL_SERVER_IP_ADDRESS',
+    '-e MORPHL_CASSANDRA_USERNAME',
+    '-e MORPHL_CASSANDRA_KEYSPACE',
+    '-e MORPHL_CASSANDRA_PASSWORD',
+    'pysparkcontainer',
+    'bash /opt/usi_csv/preprocessing/run_preprocessing.sh ']
+run_preprocessing_cmd = ' '.join(run_preprocessing)
+
+preprocessing_operator = BashOperator(
+    task_id='run_preprocessing',
+    bash_command=run_preprocessing_cmd,
     dag=dag)
 
 # Do not remove the extra space at the end (the one after 'run_batch_inference.sh')
@@ -46,7 +71,7 @@ run_batch_inference = [
     '-e MORPHL_CASSANDRA_USERNAME',
     '-e MORPHL_CASSANDRA_KEYSPACE',
     '-e MORPHL_CASSANDRA_PASSWORD',
-    'pythoncontainer',
+    'pysparkcontainer',
     'bash /opt/usi_csv/prediction/batch_inference/run_batch_inference.sh ']
 run_batch_inference_cmd = ' '.join(run_batch_inference)
 
@@ -55,4 +80,4 @@ batch_inference_operator = BashOperator(
     bash_command=run_batch_inference_cmd,
     dag=dag)
 
-ingestion_operator >> batch_inference_operator
+truncate_tables_operator >> ingestion_operator >> preprocessing_operator >> batch_inference_operator

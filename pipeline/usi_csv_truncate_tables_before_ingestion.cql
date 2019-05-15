@@ -1,0 +1,2 @@
+TRUNCATE TABLE morphl.usi_csv_features_raw_p;
+TRUNCATE TABLE morphl.usi_csv_word_embeddings;
