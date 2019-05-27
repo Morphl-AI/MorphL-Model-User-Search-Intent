@@ -19,8 +19,16 @@ chmod 660 /opt/secrets/usi_csv/gcloud_service_account.json
 chgrp airflow /opt/secrets/usi_csv /opt/secrets/usi_csv/gcloud_service_account.json
 
 # Download glove vector to local dir
+MORPHL_MIRROR='http://mirror.morphlio.com/repo'
+
 mkdir -p /opt/glove
-wget -qO /opt/glove/glove.6B.zip http://downloads.cs.stanford.edu/nlp/data/wordvecs/glove.6B.zip
+#### Old repo ###
+# GLOVE_URL=http://downloads.cs.stanford.edu/nlp/data/wordvecs/glove.6B.zip
+#################
+#### New repo ###
+GLOVE_URL="${MORPHL_MIRROR}/glove/glove.6B.zip"
+#################
+wget -qO /opt/glove/glove.6B.zip ${GLOVE_URL}
 unzip -j /opt/glove/glove.6B.zip glove.6B.100d.txt -d /opt/glove
 rm /opt/glove/glove.6B.zip
 
